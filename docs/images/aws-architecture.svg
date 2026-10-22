@@ -16,7 +16,7 @@
   </style>
 
   <text x="20" y="28" class="h" font-size="18">CloudCart on AWS — target architecture (Stage 2 → 3)</text>
-  <text x="20" y="46" class="s">Region: ap-south-1 (Mumbai) · Blue = request path · Orange dashed = data access · Grey = management/CI</text>
+  <text x="20" y="46" class="s">Region: us-east-1 (N. Virginia) · Blue = request path · Orange dashed = data access · Grey = management/CI</text>
 
   <!-- Internet / edge -->
   <rect x="20" y="70" width="190" height="130" class="edge"/>

@@ -37,7 +37,7 @@
 | 🔐 auth | `MONGODB_URI` | `mongodb://admin:password@mongo:27017/cloudcart_auth?authSource=admin` | Atlas SRV string `mongodb+srv://user:pass@cluster0.xxxxx.mongodb.net/cloudcart_auth` | Stage 3: DocumentDB string + `tls=true&tlsCAFile=…` |
 | | `REDIS_HOST` / `REDIS_PORT` | `redis` / `6379` | `redis` / `6379` (sidecar, via `links`) | Stage 2: ElastiCache primary endpoint |
 | | `DEV_SHOW_OTP` | `true` | `true` | `false` once SES is live |
-| | `AWS_REGION` | — | `ap-south-1` | for SES client |
+| | `AWS_REGION` | — | `us-east-1` | for SES client |
 | | `SES_SENDER_EMAIL` | unset | unset | Stage 2: verified identity |
 | 📦 product | `DB_HOST` | `postgres` | RDS endpoint | |
 | | `DB_PORT` / `DB_USER` / `DB_PASSWORD` | `5432` / `postgres` / `password` | `5432` / `postgres` / *master pwd* | password → Secrets Manager in Stage 2 |
@@ -53,7 +53,7 @@
 | 💳 payment | `DB_*` | as product, `DB_NAME=payment_db` | `DB_NAME=payment_db` | |
 | | `ORDER_SERVICE_URL` | `http://order-service:5004` | `http://<ALB-DNS>` | |
 
-> 💡 In Stage 1 services reach each other **through the ALB** (`http://cloudcart-alb-123.ap-south-1.elb.amazonaws.com/api/products/…`). The ALB rules route the path to the right target group just like a browser request. For this to work, `cloudcart-alb-sg` must allow inbound :80 **from `cloudcart-app-sg`** — not only from the internet.
+> 💡 In Stage 1 services reach each other **through the ALB** (`http://cloudcart-alb-123.us-east-1.elb.amazonaws.com/api/products/…`). The ALB rules route the path to the right target group just like a browser request. For this to work, `cloudcart-alb-sg` must allow inbound :80 **from `cloudcart-app-sg`** — not only from the internet.
 
 ---
 

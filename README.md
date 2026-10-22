@@ -114,6 +114,8 @@ Full walkthrough with checkpoints: **[docs/01-local-setup.md](docs/01-local-setu
 | 08 | [DevOps checklist](docs/08-devops-checklist.md) | you are the DevOps engineer and want to know what to watch |
 | 09 | [Cost ledger & teardown](docs/09-cost-and-teardown.md) | before you create anything, and before you go to sleep |
 | 10 | [Troubleshooting](docs/10-troubleshooting.md) | something is red and you don't know why |
+| 11 | [Task definition deep dive](docs/11-task-definition-deep-dive.md) | you are on the *Create task definition* screen and want every field explained (+ ECS Exec) |
+| 12 | [Cluster, target groups, ALB & service deep dive](docs/12-ecs-cluster-service-alb-deep-dive.md) | you are creating the cluster, target groups, ALB rules or an ECS service |
 
 > 💡 **Diagrams** are written in [Mermaid](https://mermaid.js.org). GitHub renders them automatically. In VS Code install the extension *"Markdown Preview Mermaid Support"*, then press `Ctrl+Shift+V`.
 

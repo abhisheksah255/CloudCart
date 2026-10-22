@@ -2,7 +2,7 @@
 
 > 🎯 **Purpose:** (1) know what each stage costs *before* you build it, (2) keep a ledger of every resource you create, (3) delete everything in the right order so the bill goes to **₹0**.
 
-Prices are **approximate ap-south-1 on-demand**, converted at ₹84/$, rounded. Check the AWS pricing page for exact numbers; the *ratios* are what matter.
+Prices are **approximate us-east-1 on-demand**, converted at ₹84/$, rounded. Check the AWS pricing page for exact numbers; the *ratios* are what matter.
 
 ---
 
@@ -94,7 +94,7 @@ Copy this table into `docs/LEDGER.md` (git-ignored if you note secrets there —
 | 25 | VPC | security groups: data → app → alb → vpce (reverse of creation) | S1 | | VPC delete does this too | ☐ |
 | 26 | VPC | `cloudcart-vpc` (deletes subnets, route tables, IGW, S3 endpoint) | S1 | | fails if anything above remains — the error names it | ☐ |
 | 27 | IAM | roles ×5, OIDC provider, inline policies | S1/S2 | | | ☐ |
-| 28 | ACM | certificates (Mumbai + us-east-1) | S2/S3 | | after ALB/CloudFront gone | ☐ |
+| 28 | ACM | certificate (us-east-1, shared by ALB and CloudFront) | S2/S3 | | after ALB/CloudFront gone | ☐ |
 | 29 | SES | identities | S2 | | | ☐ |
 | 30 | Atlas | cluster `cloudcart` | S1 | | outside AWS | ☐ |
 | 31 | Budgets | keep it! | S0 | | it will tell you if something survived | — |
@@ -127,7 +127,7 @@ flowchart TD
 ### ✅ Verify it's all gone
 1. **Resource Groups → Tag Editor** → Regions: *All* → Resource types: *All* → Tag `Project` = `cloudcart` → **Search**. Expect **0 resources**.
 2. **VPC → Your VPCs**: only `default`. **EC2 → Instances / Load balancers / Elastic IPs / Volumes / Snapshots**: empty.
-3. Next day: **Billing → Cost Explorer**, daily granularity, filter tag `Project=cloudcart` → ₹0. Also check *Bills* for anything in **us-east-1** (CloudFront cert) or a wrong region.
+3. Next day: **Billing → Cost Explorer**, daily granularity, filter tag `Project=cloudcart` → ₹0. Also check *Bills* for anything in a wrong region.
 4. Keep the **Budget** for a month; if the 85 % mail arrives, something survived.
 
 ---

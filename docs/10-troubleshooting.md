@@ -142,7 +142,7 @@ docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 curl -s localhost:32769/health
 
 # Can the host reach RDS / Redis / Atlas?
-nc -zv cloudcart-postgres.xxxx.ap-south-1.rds.amazonaws.com 5432
+nc -zv cloudcart-postgres.xxxx.us-east-1.rds.amazonaws.com 5432
 nc -zv cloudcart-redis.xxxx.cache.amazonaws.com 6379
 curl -sI https://cloud.mongodb.com | head -1
 

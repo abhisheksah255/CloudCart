@@ -6,7 +6,7 @@
 #   3. force a new deployment of each ECS service so it pulls the new image
 #
 # Required GitHub repository settings -> Secrets and variables -> Actions -> Variables:
-#   AWS_REGION        e.g. ap-south-1
+#   AWS_REGION        e.g. us-east-1
 #   AWS_ACCOUNT_ID    12-digit account id
 #   AWS_ROLE_ARN      arn:aws:iam::<account>:role/cloudcart-github-actions-role   (see docs/07-iam-roles-and-policies.md)
 #   ECS_CLUSTER       cloudcart-cluster

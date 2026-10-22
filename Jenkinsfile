@@ -3,7 +3,7 @@
 pipeline {
     agent any
     environment {
-        AWS_REGION     = 'ap-south-1'
+        AWS_REGION     = 'us-east-1'
         ECS_CLUSTER    = 'cloudcart-cluster'
         AWS_ACCOUNT_ID = sh(script: 'aws sts get-caller-identity --query Account --output text', returnStdout: true).trim()
         ECR            = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"

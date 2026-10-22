@@ -69,7 +69,7 @@ ElastiCache → `cloudcart-redis` → **Add replica** (1), **Multi-AZ** enabled,
 DocumentDB **requires TLS**. The auth-service already passes `MONGODB_URI` straight to Mongoose, so the URI carries the TLS options:
 
 ```
-mongodb://cloudcart:PASSWORD@cloudcart-docdb.cluster-xxxx.ap-south-1.docdb.amazonaws.com:27017/cloudcart_auth?tls=true&tlsCAFile=/app/global-bundle.pem&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false
+mongodb://cloudcart:PASSWORD@cloudcart-docdb.cluster-xxxx.us-east-1.docdb.amazonaws.com:27017/cloudcart_auth?tls=true&tlsCAFile=/app/global-bundle.pem&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false
 ```
 
 Add the CA bundle to the image: in `services/auth-service/Dockerfile`, before `COPY . .`:
@@ -89,27 +89,27 @@ Rebuild/push (CI/CD does it), update the `cloudcart/mongodb-uri` secret, redeplo
 
 - ASG → Edit → **Min 2, Desired 2, Max 4**; subnets = both private subnets (already). ASG balances instances across AZs.
 - Each ECS service → Update → **Placement strategy**: `spread` on `attribute:ecs.availability-zone` then `binpack` on memory → tasks land on different AZs.
-- Add a **second NAT gateway** in `cloudcart-subnet-public2-ap-south-1b` and point `cloudcart-rtb-private2` at it (so AZ b doesn't depend on AZ a's NAT).
+- Add a **second NAT gateway** in `cloudcart-subnet-public2-us-east-1b` and point `cloudcart-rtb-private2` at it (so AZ b doesn't depend on AZ a's NAT).
 
 ### ✅ Verify
-ECS → cluster → Tasks → *Availability zone* column shows both `ap-south-1a` and `ap-south-1b`. Terminate one EC2 host from the EC2 console → the ASG replaces it within ~3 min and the site stays up (ALB drains the dead targets in 30 s).
+ECS → cluster → Tasks → *Availability zone* column shows both `us-east-1a` and `us-east-1b`. Terminate one EC2 host from the EC2 console → the ASG replaces it within ~3 min and the site stays up (ALB drains the dead targets in 30 s).
 
 ---
 
 ## Step 3 — CloudFront + WAF at the edge (45 min)
 
 ### 3.1 Why
-CloudFront caches static files (HTML/CSS/JS/images) at 600+ edge locations so a user in São Paulo doesn't fetch `style.css` from Mumbai, terminates TLS close to the user, absorbs DDoS (Shield Standard is free), and is where **WAF** inspects every request before it reaches your ALB.
+CloudFront caches static files (HTML/CSS/JS/images) at 600+ edge locations so a user in São Paulo doesn't fetch `style.css` from N. Virginia, terminates TLS close to the user, absorbs DDoS (Shield Standard is free), and is where **WAF** inspects every request before it reaches your ALB.
 
-### 3.2 Certificate for CloudFront — ⚠️ must be in **us-east-1**
-Switch region to **N. Virginia** → ACM → Request public cert for `shop.yourdomain.com` → DNS validation → Create records in Route 53 → *Issued*. Switch back to Mumbai.
+### 3.2 Certificate for CloudFront — must be in **us-east-1**
+Good news: that is already our region, so the Stage 2 certificate can be reused by CloudFront. (If you ever run this in another region, CloudFront still needs its own cert requested in us-east-1.)
 
 ### 3.3 Distribution
 **CloudFront → Create distribution**
 
 | Field | Value | Why |
 |-------|-------|-----|
-| Origin domain | `cloudcart-alb-….ap-south-1.elb.amazonaws.com` | |
+| Origin domain | `cloudcart-alb-….us-east-1.elb.amazonaws.com` | |
 | Protocol | **HTTPS only**, origin SSL TLSv1.2 | |
 | Origin name | `alb-origin` | |
 | **Add custom header** | `X-Origin-Verify: <long random string>` | later the ALB only accepts requests carrying this → nobody can bypass CloudFront/WAF by hitting the ALB directly |
@@ -160,7 +160,7 @@ Route 53 → `shop` A record → Edit → Alias to **CloudFront distribution** �
 
 **When it makes sense:** your users are worldwide *and* your traffic is mostly API (which CloudFront doesn't cache). GA gives two **static anycast IPs** and routes users over the AWS backbone to the nearest healthy ALB — later, to ALBs in *multiple regions*.
 
-**Global Accelerator → Create accelerator**: name `cloudcart-ga`, type Standard → Listener TCP 443 → Endpoint group ap-south-1 → Endpoint: `cloudcart-alb` → Create. Point `api.yourdomain.com` at the GA DNS name if you want to demo it.
+**Global Accelerator → Create accelerator**: name `cloudcart-ga`, type Standard → Listener TCP 443 → Endpoint group us-east-1 → Endpoint: `cloudcart-alb` → Create. Point `api.yourdomain.com` at the GA DNS name if you want to demo it.
 
 💰 ≈ ₹45/day fixed + data. **Not needed for a single-region demo**; create it, measure latency from a different region (e.g. an EC2 in `us-east-1` running `curl -w %{time_connect}`), then delete it.
 

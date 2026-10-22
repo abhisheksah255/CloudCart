@@ -10,7 +10,7 @@
 flowchart LR
     U([🌍 Anyone]) -->|HTTP :80| ALB
 
-    subgraph VPC["cloudcart-vpc 10.0.0.0/16 · ap-south-1"]
+    subgraph VPC["cloudcart-vpc 10.0.0.0/16 · us-east-1"]
         subgraph PUB["Public subnets (a, b)"]
             ALB["⚖️ cloudcart-alb<br/>6 target groups · 5 path rules"]
             EC2["🖥️ 1 × t3.small (ECS host)<br/>public IP · no SSH · SSM only<br/>6 tasks + 3 redis sidecars"]
@@ -49,9 +49,9 @@ Open [09-cost-and-teardown.md](09-cost-and-teardown.md) in another tab and **wri
 
 ### 0.1 Pick the region 🌏
 
-Top-right of the console → region dropdown → **Asia Pacific (Mumbai) `ap-south-1`**.
+Top-right of the console → region dropdown → **US East (N. Virginia) `us-east-1`**.
 
-> 💡 **Why Mumbai?** Lowest latency from India, SES and all services we use are available, pricing is close to us-east-1. Everything in this guide assumes `ap-south-1`. **Every screen below must show this region** — the #1 beginner mistake is creating the VPC in one region and the cluster in another.
+> 💡 **Why us-east-1?** Every AWS service launches here first, it is the cheapest region, and the CloudFront certificate in Stage 3 must live here anyway — one region for everything. Latency from India is ~200 ms, which is fine for a demo. Everything in this guide assumes `us-east-1`. **Every screen below must show this region** — the #1 beginner mistake is creating the VPC in one region and the cluster in another.
 
 ### 0.2 Set a budget alarm 💸
 
@@ -69,7 +69,7 @@ On **every** resource that has a *Tags* section, add `Project` = `cloudcart`. At
 
 ### 0.4 Create the MongoDB Atlas cluster (outside AWS, free) 🍃
 
-1. https://www.mongodb.com/atlas → sign up → **Create** → **M0 Free** → Provider **AWS**, Region **Mumbai (ap-south-1)**, name `cloudcart` → Create.
+1. https://www.mongodb.com/atlas → sign up → **Create** → **M0 Free** → Provider **AWS**, Region **N. Virginia (us-east-1)**, name `cloudcart` → Create.
 2. **Security → Database Access → Add new database user**: username `cloudcart`, a strong password (save it), role *Read and write to any database*.
 3. **Security → Network Access → Add IP address** → **Allow access from anywhere** (`0.0.0.0/0`). ⚠️ Fine for Stage 1 because the user has a strong password; in Stage 2 you'll restrict this to your NAT gateway's IP.
 4. **Connect → Drivers** → copy the URI. Replace `<password>` and add the database name:
@@ -86,7 +86,7 @@ On **every** resource that has a *Tags* section, add `Project` = `cloudcart`. At
 | Field | Value | Why |
 |-------|-------|-----|
 | Resources to create | **VPC and more** | the wizard also makes subnets, route tables, IGW — correctly wired |
-| Name tag auto-generation | ✅ Auto-generate, text: `cloudcart` | names everything `cloudcart-vpc`, `cloudcart-subnet-public1-ap-south-1a`… |
+| Name tag auto-generation | ✅ Auto-generate, text: `cloudcart` | names everything `cloudcart-vpc`, `cloudcart-subnet-public1-us-east-1a`… |
 | IPv4 CIDR block | `10.0.0.0/16` | 65k addresses; room for Stage 2/3 extra subnets. Must not overlap anything you may peer with later |
 | IPv6 CIDR block | **No IPv6 CIDR block** | nothing here needs IPv6 |
 | Tenancy | **Default** | *Dedicated* = physically isolated hardware, ~$2/hour minimum |
@@ -223,8 +223,8 @@ IAM → Roles → search `cloudcart` → 2 roles. Open the instance role → **T
 You need the **AWS CLI** configured with an IAM user/access key that can push to ECR (your own admin user is fine for a learning account). From the project folder on your laptop:
 
 ```bash
-aws configure            # access key, secret, region ap-south-1, output json
-./scripts/build-and-push-ecr.sh <your-account-id> ap-south-1
+aws configure            # access key, secret, region us-east-1, output json
+./scripts/build-and-push-ecr.sh <your-account-id> us-east-1
 ```
 
 Takes 3–6 minutes. The script logs in to ECR, builds the 6 images (frontend with the **AWS** nginx config — no proxy), and pushes them.
@@ -247,7 +247,7 @@ ECR → each repository shows one image tagged `latest`, with a *Scan status*. C
 | Name | `cloudcart-db-subnets` |
 | Description | `private subnets for cloudcart databases` |
 | VPC | `cloudcart-vpc` |
-| Availability Zones | `ap-south-1a`, `ap-south-1b` |
+| Availability Zones | `us-east-1a`, `us-east-1b` |
 | Subnets | tick **only** the two **private** subnets (`10.0.128.0/20`, `10.0.144.0/20`) |
 
 ### 5.2 Database
@@ -288,7 +288,7 @@ ECR → each repository shows one image tagged `latest`, with a *Scan status*. C
 **Create database** → status *Creating* for ~8–10 minutes. Continue with Step 6 meanwhile.
 
 ### ✅ Verify (when *Available*)
-Click `cloudcart-postgres` → **Connectivity & security**: copy the **Endpoint** (`cloudcart-postgres.xxxx.ap-south-1.rds.amazonaws.com`). *Publicly accessible* must say **No**. Security group must be `cloudcart-data-sg`.
+Click `cloudcart-postgres` → **Connectivity & security**: copy the **Endpoint** (`cloudcart-postgres.xxxx.us-east-1.rds.amazonaws.com`). *Publicly accessible* must say **No**. Security group must be `cloudcart-data-sg`.
 
 📒 Ledger: RDS `cloudcart-postgres` (**≈ ₹33/day** — the first thing to delete when pausing) + subnet group.
 
@@ -405,7 +405,7 @@ For each: **Add condition → Path → type the pattern → Confirm → Next →
 
 ### ✅ Verify
 - Listener rules page shows 5 rules + *Default*.
-- Copy the ALB **DNS name** from the *Details* panel (`cloudcart-alb-123456789.ap-south-1.elb.amazonaws.com`).
+- Copy the ALB **DNS name** from the *Details* panel (`cloudcart-alb-123456789.us-east-1.elb.amazonaws.com`).
 - Open `http://<dns-name>/` in a browser → **503 Service Temporarily Unavailable**. ✅ That is correct: the ALB is alive but no targets are registered yet. (A timeout instead would mean the SG or subnets are wrong.)
 
 📒 Ledger: ALB `cloudcart-alb` (**≈ ₹48/day**, bills even with zero traffic).
@@ -422,7 +422,7 @@ The services expect `product_db`, `order_db`, `payment_db`. RDS doesn't run `ini
 ```bash
 sudo dnf install -y postgresql16          # Amazon Linux 2023
 export PGPASSWORD='YOUR_MASTER_PASSWORD'
-H=cloudcart-postgres.xxxxxxxx.ap-south-1.rds.amazonaws.com
+H=cloudcart-postgres.xxxxxxxx.us-east-1.rds.amazonaws.com
 
 psql -h $H -U postgres -d postgres -c "CREATE DATABASE product_db;" -c "CREATE DATABASE order_db;" -c "CREATE DATABASE payment_db;"
 ```
@@ -524,7 +524,7 @@ Open **`http://<alb-dns-name>`** from your phone on mobile data (not Wi-Fi) — 
 Then run the checkpoint list from [01-local-setup.md](01-local-setup.md#-checkpoint-c--the-full-user-journey) against the ALB URL, or:
 
 ```bash
-./scripts/smoke-test.sh http://cloudcart-alb-123456789.ap-south-1.elb.amazonaws.com
+./scripts/smoke-test.sh http://cloudcart-alb-123456789.us-east-1.elb.amazonaws.com
 ```
 
 Watch it happen in AWS while you click:

@@ -74,11 +74,11 @@ We create one NAT (for Atlas/SES) and endpoints for the AWS services, so most tr
 | Field | Value | Why |
 |-------|-------|-----|
 | Name | `cloudcart-nat-a` | |
-| Subnet | `cloudcart-subnet-public1-ap-south-1a` | NAT **lives in a public subnet** |
+| Subnet | `cloudcart-subnet-public1-us-east-1a` | NAT **lives in a public subnet** |
 | Connectivity type | Public | |
 | Elastic IP allocation ID | **Allocate Elastic IP** | the fixed IP all outbound traffic uses — 📒 note it; Atlas will whitelist it |
 
-Then wire the private route tables: **Route tables → `cloudcart-rtb-private1-ap-south-1a` → Routes → Edit → Add route** `0.0.0.0/0` → Target *NAT gateway* → `cloudcart-nat-a`. **Repeat for `cloudcart-rtb-private2-ap-south-1b`** (same NAT; one NAT serving both AZs is the Stage 2 cost compromise — Stage 3 adds a second).
+Then wire the private route tables: **Route tables → `cloudcart-rtb-private1-us-east-1a` → Routes → Edit → Add route** `0.0.0.0/0` → Target *NAT gateway* → `cloudcart-nat-a`. **Repeat for `cloudcart-rtb-private2-us-east-1b`** (same NAT; one NAT serving both AZs is the Stage 2 cost compromise — Stage 3 adds a second).
 
 ### 1.3 Interface endpoints (×5) and confirm the S3 gateway
 
@@ -86,14 +86,14 @@ Then wire the private route tables: **Route tables → `cloudcart-rtb-private1-a
 
 | Name | Service name (search) | Type | Subnets | Security group | Private DNS |
 |------|-----------------------|------|---------|----------------|:-----------:|
-| `cc-vpce-ecr-api` | `com.amazonaws.ap-south-1.ecr.api` | Interface | both **private** | `cloudcart-vpce-sg` *(create: inbound 443 from `cloudcart-app-sg`)* | ✅ |
+| `cc-vpce-ecr-api` | `com.amazonaws.us-east-1.ecr.api` | Interface | both **private** | `cloudcart-vpce-sg` *(create: inbound 443 from `cloudcart-app-sg`)* | ✅ |
 | `cc-vpce-ecr-dkr` | `…ecr.dkr` | Interface | both private | same | ✅ |
 | `cc-vpce-logs` | `…logs` | Interface | both private | same | ✅ |
 | `cc-vpce-secrets` | `…secretsmanager` | Interface | both private | same | ✅ |
 | `cc-vpce-ssm` | `…ssm`, `…ssmmessages`, `…ec2messages` *(three endpoints — Session Manager needs all three)* | Interface | both private | same | ✅ |
 | *(exists)* | `…s3` | Gateway | private route tables | — | — |
 
-> 🧠 **Private DNS enabled** is what makes `ecr.ap-south-1.amazonaws.com` resolve to the endpoint's private IP instead of the public one — so your code and the ECS agent need no changes.
+> 🧠 **Private DNS enabled** is what makes `ecr.us-east-1.amazonaws.com` resolve to the endpoint's private IP instead of the public one — so your code and the ECS agent need no changes.
 
 ### 1.4 Move the ECS hosts
 
@@ -177,7 +177,7 @@ IAM → Roles → `cloudcart-ecs-task-execution-role` → **Add permissions → 
 { "Version": "2012-10-17", "Statement": [{
   "Effect": "Allow",
   "Action": ["secretsmanager:GetSecretValue"],
-  "Resource": "arn:aws:secretsmanager:ap-south-1:<ACCOUNT_ID>:secret:cloudcart/*"
+  "Resource": "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:cloudcart/*"
 }]}
 ```
 Name: `cloudcart-read-secrets`.
@@ -188,7 +188,7 @@ New revision of each family → JSON: **remove** `JWT_SECRET`, `INTERNAL_SERVICE
 
 ```json
 "secrets": [
-  { "name": "JWT_SECRET",             "valueFrom": "arn:aws:secretsmanager:ap-south-1:<ACCOUNT_ID>:secret:cloudcart/jwt-AbCdEf" },
+  { "name": "JWT_SECRET",             "valueFrom": "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:cloudcart/jwt-AbCdEf" },
   { "name": "INTERNAL_SERVICE_TOKEN", "valueFrom": "arn:…:secret:cloudcart/internal-token-XxYyZz" },
   { "name": "DB_PASSWORD",            "valueFrom": "arn:…:secret:cloudcart/db-password-…" },
   { "name": "MONGODB_URI",            "valueFrom": "arn:…:secret:cloudcart/mongodb-uri-…" }
@@ -224,7 +224,7 @@ In Stage 1 the services call each other through `http://<alb-dns>`. If you redir
 **HTTP:80 listener → Manage rules → Default rule → Edit → Action: Redirect** to HTTPS 443, status 301, and delete the five HTTP path rules.
 
 ### 4.5 DNS record
-Route 53 → hosted zone → **Create record**: name `shop`, type **A**, **Alias ✅**, route to *Alias to Application Load Balancer* → ap-south-1 → `cloudcart-alb` → Create.
+Route 53 → hosted zone → **Create record**: name `shop`, type **A**, **Alias ✅**, route to *Alias to Application Load Balancer* → us-east-1 → `cloudcart-alb` → Create.
 
 ### ✅ Verify
 - `https://shop.yourdomain.com` → 🔒 padlock, site loads. `http://…` → redirects.
@@ -317,7 +317,7 @@ Pick one. GitHub Actions is free and keyless; Jenkins teaches you the self-hoste
 
 1. **IAM → Identity providers → Add provider**: OpenID Connect, URL `https://token.actions.githubusercontent.com`, audience `sts.amazonaws.com`.
 2. **IAM → Roles → Create role → Web identity** → the provider above, audience `sts.amazonaws.com`, GitHub organization = your username, repository = `cloudcart` → permissions: `AmazonEC2ContainerRegistryPowerUser` + inline `ecs:UpdateService`, `ecs:DescribeServices` on your cluster's services → name `cloudcart-github-actions-role`.
-3. GitHub repo → **Settings → Secrets and variables → Actions → Variables**: `AWS_REGION=ap-south-1`, `AWS_ACCOUNT_ID`, `AWS_ROLE_ARN`, `ECS_CLUSTER=cloudcart-cluster`.
+3. GitHub repo → **Settings → Secrets and variables → Actions → Variables**: `AWS_REGION=us-east-1`, `AWS_ACCOUNT_ID`, `AWS_ROLE_ARN`, `ECS_CLUSTER=cloudcart-cluster`.
 4. Push to `main`. `.github/workflows/deploy.yml` builds 6 images, pushes `:sha` and `:latest`, then `update-service --force-new-deployment` ×6.
 
 ### Option B — Jenkins on EC2

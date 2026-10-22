@@ -71,7 +71,7 @@ redis.on('connect', () => log('info', 'Redis connected', { host: REDIS_HOST }));
 redis.on('error', (err) => log('error', 'Redis error', { error: err.message }));
 
 // ---------- SES (optional) ----------
-const sesClient = new SESClient({ region: process.env.AWS_REGION || 'ap-south-1' });
+const sesClient = new SESClient({ region: process.env.AWS_REGION || 'us-east-1' });
 async function deliverOtp(email, otp) {
   const sender = process.env.SES_SENDER_EMAIL;
   if (!sender) {

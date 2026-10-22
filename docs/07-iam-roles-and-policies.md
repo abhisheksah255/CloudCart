@@ -79,7 +79,7 @@ flowchart TB
 { "Version": "2012-10-17", "Statement": [{
   "Effect": "Allow",
   "Action": ["secretsmanager:GetSecretValue"],
-  "Resource": "arn:aws:secretsmanager:ap-south-1:<ACCOUNT_ID>:secret:cloudcart/*"
+  "Resource": "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:cloudcart/*"
 }]}
 ```
 If you used a customer-managed KMS key for the secrets, add `kms:Decrypt` on that key too.
@@ -130,7 +130,7 @@ The `Condition` pins the sender address — a compromised container can't spam f
 ```json
 { "Version": "2012-10-17", "Statement": [
   { "Effect": "Allow", "Action": ["ecs:UpdateService", "ecs:DescribeServices"],
-    "Resource": "arn:aws:ecs:ap-south-1:<ACCOUNT_ID>:service/cloudcart-cluster/*" },
+    "Resource": "arn:aws:ecs:us-east-1:<ACCOUNT_ID>:service/cloudcart-cluster/*" },
   { "Effect": "Allow", "Action": "ecs:DescribeTaskDefinition", "Resource": "*" }
 ]}
 ```
