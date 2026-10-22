@@ -1,0 +1,19 @@
+{
+  "name": "cloudcart-auth-service",
+  "version": "1.0.0",
+  "description": "CloudCart Auth Service - passwordless OTP login, users & JWT (MongoDB + Redis)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-ses": "^3.600.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.5.0"
+  }
+}

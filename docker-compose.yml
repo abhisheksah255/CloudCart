@@ -1,0 +1,175 @@
+# CloudCart — full local stack for Docker Desktop
+#
+#   docker compose up -d --build      start everything (first run ~3-5 min)
+#   docker compose ps                 see the 9 containers
+#   docker compose logs -f auth       follow one service's logs
+#   docker compose down               stop (data kept in volumes)
+#   docker compose down -v            stop AND wipe databases
+#
+# Open http://localhost:8080
+#
+# Every value below has an AWS equivalent — see docs/02-architecture-hld.md "AWS service mapping".
+
+name: cloudcart
+
+x-common-env: &common-env            # shared by all backend services
+  JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret-change-me}
+  INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-local-internal-token}
+  NODE_ENV: development
+
+services:
+
+  # ─────────────────────────── data stores ───────────────────────────
+  postgres:                           # AWS: Amazon RDS for PostgreSQL
+    image: postgres:16-alpine
+    container_name: cc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: postgres
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/postgres:/docker-entrypoint-initdb.d:ro   # runs *.sql once, on first start, in filename order
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mongo:                              # AWS: MongoDB Atlas (free M0) or Amazon DocumentDB
+    image: mongo:7
+    container_name: cc-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+    ports: ["27017:27017"]
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:                              # AWS: ElastiCache (Redis/Valkey) — or a sidecar container in Stage 1
+    image: redis:7-alpine
+    container_name: cc-redis
+    restart: unless-stopped
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ─────────────────────────── microservices ───────────────────────────
+  auth-service:                       # AWS: ECS task "cc-auth" (port 5001)
+    build: ./services/auth-service
+    container_name: cc-auth
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      PORT: 5001
+      MONGODB_URI: mongodb://admin:password@mongo:27017/cloudcart_auth?authSource=admin
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      DEV_SHOW_OTP: "true"            # shows the OTP in the UI — set "false" when SES is configured
+      # SES_SENDER_EMAIL: you@yourdomain.com   # uncomment + AWS creds to send real emails
+    ports: ["5001:5001"]
+    depends_on:
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  product-service:                    # AWS: ECS task "cc-product" (port 5002)
+    build: ./services/product-service
+    container_name: cc-product
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      PORT: 5002
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: password
+      DB_NAME: product_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports: ["5002:5002"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  cart-service:                       # AWS: ECS task "cc-cart" (port 5003)
+    build: ./services/cart-service
+    container_name: cc-cart
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      PORT: 5003
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PRODUCT_SERVICE_URL: http://product-service:5002     # AWS: http://<ALB DNS> (Stage 1)
+    ports: ["5003:5003"]
+    depends_on:
+      redis: { condition: service_healthy }
+      product-service: { condition: service_started }
+
+  order-service:                      # AWS: ECS task "cc-order" (port 5004)
+    build: ./services/order-service
+    container_name: cc-order
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      PORT: 5004
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: password
+      DB_NAME: order_db
+      CART_SERVICE_URL: http://cart-service:5003
+      PRODUCT_SERVICE_URL: http://product-service:5002
+    ports: ["5004:5004"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      cart-service: { condition: service_started }
+
+  payment-service:                    # AWS: ECS task "cc-payment" (port 5005)
+    build: ./services/payment-service
+    container_name: cc-payment
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      PORT: 5005
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: password
+      DB_NAME: payment_db
+      ORDER_SERVICE_URL: http://order-service:5004
+    ports: ["5005:5005"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      order-service: { condition: service_started }
+
+  # ─────────────────────────── frontend / entry point ───────────────────────────
+  frontend:                           # AWS: ECS task "cc-frontend" (port 80) + ALB does the /api routing
+    build:
+      context: ./frontend
+      args:
+        NGINX_CONF: nginx.local.conf  # local: nginx also proxies /api/* (ALB stand-in)
+    container_name: cc-frontend
+    restart: unless-stopped
+    ports: ["8080:80"]
+    depends_on:
+      - auth-service
+      - product-service
+      - cart-service
+      - order-service
+      - payment-service
+
+volumes:
+  pgdata:
+  mongodata:

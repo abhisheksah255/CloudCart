@@ -1,0 +1,106 @@
+{
+  "family": "cc-cart",
+  "networkMode": "bridge",
+  "requiresCompatibilities": [
+    "EC2"
+  ],
+  "executionRoleArn": "arn:aws:iam::{{ACCOUNT_ID}}:role/cloudcart-ecs-task-execution-role",
+  "containerDefinitions": [
+    {
+      "name": "redis",
+      "image": "public.ecr.aws/docker/library/redis:7-alpine",
+      "essential": true,
+      "cpu": 32,
+      "memoryReservation": 64,
+      "memory": 128,
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "redis-cli ping | grep PONG"
+        ],
+        "interval": 10,
+        "timeout": 3,
+        "retries": 3,
+        "startPeriod": 5
+      }
+    },
+    {
+      "name": "cart",
+      "image": "{{ACCOUNT_ID}}.dkr.ecr.{{REGION}}.amazonaws.com/cloudcart/cart-service:latest",
+      "essential": true,
+      "cpu": 128,
+      "memoryReservation": 128,
+      "memory": 256,
+      "portMappings": [
+        {
+          "containerPort": 5003,
+          "hostPort": 0,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "JWT_SECRET",
+          "value": "{{JWT_SECRET}}"
+        },
+        {
+          "name": "INTERNAL_SERVICE_TOKEN",
+          "value": "{{INTERNAL_TOKEN}}"
+        },
+        {
+          "name": "NODE_ENV",
+          "value": "production"
+        },
+        {
+          "name": "PORT",
+          "value": "5003"
+        },
+        {
+          "name": "REDIS_HOST",
+          "value": "redis"
+        },
+        {
+          "name": "REDIS_PORT",
+          "value": "6379"
+        },
+        {
+          "name": "PRODUCT_SERVICE_URL",
+          "value": "http://{{ALB_DNS}}"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/cloudcart/cart",
+          "awslogs-region": "{{REGION}}",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:5003/health || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 30
+      },
+      "links": [
+        "redis"
+      ],
+      "dependsOn": [
+        {
+          "containerName": "redis",
+          "condition": "HEALTHY"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "key": "Project",
+      "value": "cloudcart"
+    }
+  ]
+}

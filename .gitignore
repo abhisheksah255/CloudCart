@@ -1,0 +1,15 @@
+node_modules/
+**/node_modules/
+.env
+.env.*
+!.env.example
+logs/
+*.log
+*.pem
+*.key
+.DS_Store
+.vscode/
+.idea/
+
+# filled-in task definitions contain secrets
+aws/task-definitions/filled/

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CloudCart</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand" onclick="navigate('shop')">🛒 <span>CloudCart</span></div>
+    <nav id="nav">
+      <button class="navlink" data-page="shop" onclick="navigate('shop')">Shop</button>
+      <button class="navlink" data-page="orders" onclick="navigate('orders')">My Orders</button>
+      <button class="navlink admin-only hidden" data-page="admin" onclick="navigate('admin')">Admin</button>
+      <button class="navlink cart-btn" onclick="navigate('cart')">Cart <span id="cart-count" class="pill">0</span></button>
+      <span id="user-chip" class="user-chip hidden"></span>
+      <button id="logout-btn" class="btn btn-ghost hidden" onclick="logout()">Logout</button>
+    </nav>
+  </header>
+
+  <main id="app">
+
+    <!-- ===== LOGIN ===== -->
+    <section id="page-login" class="page">
+      <div class="card login-card">
+        <h2>Sign in to CloudCart</h2>
+        <p class="muted">Passwordless login — we send a one-time code to your email.</p>
+        <div id="login-alert" class="alert hidden"></div>
+
+        <form id="form-email" onsubmit="requestOtp(event)">
+          <label>Email <input id="login-email" type="email" placeholder="asha@cloudcart.local" required /></label>
+          <label>Name <small class="muted">(only for new accounts)</small> <input id="login-name" type="text" placeholder="Your name" /></label>
+          <button class="btn btn-primary" type="submit">Send OTP</button>
+        </form>
+
+        <form id="form-otp" class="hidden" onsubmit="verifyOtp(event)">
+          <p>Enter the 6-digit code sent to <b id="otp-email-label"></b></p>
+          <div id="dev-otp" class="dev-otp hidden"></div>
+          <label>OTP <input id="login-otp" type="text" inputmode="numeric" maxlength="6" placeholder="123456" required /></label>
+          <button class="btn btn-primary" type="submit">Verify &amp; Login</button>
+          <button class="btn btn-ghost" type="button" onclick="backToEmail()">← Change email</button>
+        </form>
+
+        <div class="seed-hint">
+          <b>Demo accounts</b> (already verified):<br />
+          admin@cloudcart.local · asha@cloudcart.local · ravi@cloudcart.local
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== SHOP ===== -->
+    <section id="page-shop" class="page hidden">
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="Search products…" oninput="loadProducts()" />
+        <div id="categories" class="chips"></div>
+      </div>
+      <div id="product-grid" class="grid"></div>
+    </section>
+
+    <!-- ===== CART ===== -->
+    <section id="page-cart" class="page hidden">
+      <h2>Your Cart</h2>
+      <div id="cart-items"></div>
+      <div id="cart-summary" class="card hidden">
+        <div class="row"><span>Total</span><b id="cart-total">₹0</b></div>
+        <label>Shipping address <textarea id="ship-address" rows="2" placeholder="House, street, city, PIN"></textarea></label>
+        <button class="btn btn-primary" onclick="checkout()">Place order →</button>
+      </div>
+    </section>
+
+    <!-- ===== PAYMENT ===== -->
+    <section id="page-payment" class="page hidden">
+      <div class="card login-card">
+        <h2>Payment</h2>
+        <p>Order <b id="pay-order-id"></b> · Amount <b id="pay-amount"></b></p>
+        <div id="pay-alert" class="alert hidden"></div>
+        <label>Method
+          <select id="pay-method"><option value="card">Card</option><option value="upi">UPI</option><option value="cod">Cash on delivery</option></select>
+        </label>
+        <label>Card last 4 digits <small class="muted">(use <b>0000</b> to simulate a declined payment)</small>
+          <input id="pay-last4" type="text" maxlength="4" value="4242" />
+        </label>
+        <button class="btn btn-primary" onclick="confirmPayment()">Pay now</button>
+      </div>
+    </section>
+
+    <!-- ===== ORDERS ===== -->
+    <section id="page-orders" class="page hidden">
+      <h2>My Orders</h2>
+      <div id="orders-list"></div>
+    </section>
+
+    <!-- ===== ADMIN ===== -->
+    <section id="page-admin" class="page hidden">
+      <h2>Admin</h2>
+      <div class="two-col">
+        <div class="card">
+          <h3>Add product</h3>
+          <form onsubmit="addProduct(event)">
+            <label>Name <input id="p-name" required /></label>
+            <label>Category <input id="p-category" placeholder="Electronics" required /></label>
+            <label>Price (₹) <input id="p-price" type="number" min="0" step="0.01" required /></label>
+            <label>Stock <input id="p-stock" type="number" min="0" value="10" required /></label>
+            <label>Image URL <input id="p-image" placeholder="https://…" /></label>
+            <label>Description <textarea id="p-desc" rows="2"></textarea></label>
+            <button class="btn btn-primary" type="submit">Create</button>
+          </form>
+        </div>
+        <div class="card">
+          <h3>Users</h3>
+          <div id="users-list"></div>
+          <h3 style="margin-top:20px">All orders</h3>
+          <div id="admin-orders"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== STATUS (service health) ===== -->
+    <section id="page-status" class="page hidden">
+      <h2>Service health</h2>
+      <div id="health-grid" class="grid"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>CloudCart demo · 5 microservices · MongoDB · PostgreSQL · Redis</span>
+    <button class="btn btn-ghost" onclick="navigate('status')">Service health</button>
+  </footer>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>

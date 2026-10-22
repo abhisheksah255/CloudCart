@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 640" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="13">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#4f5b78"/></marker>
+    <marker id="arrB" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#2563eb"/></marker>
+    <marker id="arrD" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#b45309"/></marker>
+  </defs>
+  <style>
+    .box{fill:#fff;stroke:#c7cfe0;stroke-width:1.2;rx:8}
+    .t{fill:#1f2937}.s{fill:#6b7280;font-size:11px}.h{font-weight:700;fill:#111827}
+    .svc{fill:#eef4ff;stroke:#2563eb;stroke-width:1.3;rx:8}
+    .db{fill:#fff7ed;stroke:#f59e0b;stroke-width:1.3;rx:8}
+    .edge{fill:#f3f4f6;stroke:#9ca3af;stroke-dasharray:4 3;rx:10}
+    .l{stroke:#4f5b78;stroke-width:1.4;fill:none;marker-end:url(#arr)}
+    .lb{stroke:#2563eb;stroke-width:1.6;fill:none;marker-end:url(#arrB)}
+    .ld{stroke:#b45309;stroke-width:1.4;fill:none;marker-end:url(#arrD);stroke-dasharray:5 3}
+  </style>
+
+  <text x="20" y="28" class="h" font-size="18">CloudCart on AWS — target architecture (Stage 2 → 3)</text>
+  <text x="20" y="46" class="s">Region: ap-south-1 (Mumbai) · Blue = request path · Orange dashed = data access · Grey = management/CI</text>
+
+  <!-- Internet / edge -->
+  <rect x="20" y="70" width="190" height="130" class="edge"/>
+  <text x="30" y="90" class="h">🌐 Internet / Edge</text>
+  <rect x="30" y="100" width="170" height="26" class="box"/><text x="38" y="117" class="t">👤 Users worldwide</text>
+  <rect x="30" y="132" width="170" height="26" class="box"/><text x="38" y="149" class="t">Route 53 · ACM (HTTPS)</text>
+  <rect x="30" y="164" width="170" height="26" class="box"/><text x="38" y="181" class="t">CloudFront + WAF <tspan class="s">(Stage 3)</tspan></text>
+
+  <!-- VPC -->
+  <rect x="240" y="70" width="720" height="550" fill="#f8fafc" stroke="#64748b" stroke-width="1.5" rx="12"/>
+  <text x="252" y="90" class="h">VPC  cloudcart-vpc  10.0.0.0/16</text>
+
+  <!-- Public subnets -->
+  <rect x="252" y="100" width="696" height="110" fill="#ecfdf5" stroke="#10b981" rx="10"/>
+  <text x="262" y="118" class="h" fill="#065f46">Public subnets  (10.0.1.0/24 · 10.0.2.0/24)  — AZ a / AZ b</text>
+  <rect x="270" y="130" width="300" height="64" class="svc"/>
+  <text x="280" y="150" class="h">Application Load Balancer</text>
+  <text x="280" y="166" class="s">listener :443 → rules: /api/auth* · /api/products* · /api/cart*</text>
+  <text x="280" y="180" class="s">/api/orders* · /api/payments* · default → frontend</text>
+  <rect x="600" y="130" width="150" height="64" class="box"/>
+  <text x="610" y="150" class="h">NAT Gateway</text>
+  <text x="610" y="166" class="s">1 AZ · outbound only</text>
+  <text x="610" y="180" class="s">(ECR pulls, Atlas, SES)</text>
+  <rect x="770" y="130" width="165" height="64" class="box"/>
+  <text x="780" y="150" class="h">Internet Gateway</text>
+  <text x="780" y="166" class="s">attached to VPC</text>
+
+  <!-- Private app subnets -->
+  <rect x="252" y="222" width="696" height="200" fill="#eff6ff" stroke="#3b82f6" rx="10"/>
+  <text x="262" y="240" class="h" fill="#1e3a8a">Private app subnets  (10.0.11.0/24 · 10.0.12.0/24)  — ECS cluster "cloudcart-cluster" on EC2 (Auto Scaling Group)</text>
+  <rect x="270" y="252" width="660" height="160" fill="#fff" stroke="#93c5fd" stroke-dasharray="3 3" rx="8"/>
+  <text x="280" y="270" class="s">EC2 host(s) · ECS-optimized AMI · t3.small · ECS agent · SSM agent (no SSH, no bastion)</text>
+
+  <rect x="285" y="285" width="100" height="50" class="svc"/><text x="293" y="304" class="h">frontend</text><text x="293" y="320" class="s">nginx :80</text>
+  <rect x="395" y="285" width="100" height="50" class="svc"/><text x="403" y="304" class="h">auth</text><text x="403" y="320" class="s">:5001 +redis</text>
+  <rect x="505" y="285" width="100" height="50" class="svc"/><text x="513" y="304" class="h">product</text><text x="513" y="320" class="s">:5002</text>
+  <rect x="615" y="285" width="100" height="50" class="svc"/><text x="623" y="304" class="h">cart</text><text x="623" y="320" class="s">:5003</text>
+  <rect x="725" y="285" width="100" height="50" class="svc"/><text x="733" y="304" class="h">order</text><text x="733" y="320" class="s">:5004</text>
+  <rect x="835" y="285" width="85" height="50" class="svc"/><text x="843" y="304" class="h">payment</text><text x="843" y="320" class="s">:5005</text>
+  <text x="285" y="360" class="s">Task definitions pull images from ECR · logs → CloudWatch · secrets injected from Secrets Manager</text>
+  <text x="285" y="378" class="s">Service-to-service calls: Stage 1 via the ALB DNS name → Stage 2 via ECS Service Connect</text>
+  <text x="285" y="396" class="s">Scaling: ECS service auto scaling (CPU 60%) + ASG capacity provider (min 1 / max 3)</text>
+
+  <!-- Private data subnets -->
+  <rect x="252" y="434" width="696" height="170" fill="#fffbeb" stroke="#f59e0b" rx="10"/>
+  <text x="262" y="452" class="h" fill="#92400e">Private data subnets  (10.0.21.0/24 · 10.0.22.0/24) — no route to internet</text>
+  <rect x="270" y="465" width="200" height="60" class="db"/>
+  <text x="280" y="485" class="h">RDS PostgreSQL</text>
+  <text x="280" y="501" class="s">db.t4g.micro → Multi-AZ (Stage 3)</text>
+  <text x="280" y="516" class="s">product_db · order_db · payment_db</text>
+  <rect x="490" y="465" width="200" height="60" class="db"/>
+  <text x="500" y="485" class="h">ElastiCache Redis</text>
+  <text x="500" y="501" class="s">cache.t4g.micro (Stage 2)</text>
+  <text x="500" y="516" class="s">OTP · carts · catalog cache</text>
+  <rect x="710" y="465" width="225" height="60" class="db"/>
+  <text x="720" y="485" class="h">DocumentDB (Stage 3)</text>
+  <text x="720" y="501" class="s">replaces MongoDB Atlas M0 (Stage 1–2)</text>
+  <text x="720" y="516" class="s">users collection</text>
+  <text x="270" y="560" class="s">Security groups: alb-sg (443/80 from internet) → app-sg (5001-5005, 80 from alb-sg) → data-sg (5432/6379/27017 from app-sg)</text>
+  <text x="270" y="580" class="s">VPC endpoints (Stage 2): S3 gateway · ECR api/dkr · CloudWatch Logs · Secrets Manager · SSM ×3</text>
+
+  <!-- Right column: services outside VPC -->
+  <rect x="980" y="70" width="180" height="550" class="edge"/>
+  <text x="990" y="90" class="h">☁️ Regional services</text>
+  <rect x="990" y="104" width="160" height="40" class="box"/><text x="998" y="121" class="t">ECR</text><text x="998" y="136" class="s">6 image repos</text>
+  <rect x="990" y="152" width="160" height="40" class="box"/><text x="998" y="169" class="t">CloudWatch</text><text x="998" y="184" class="s">logs · metrics · alarms</text>
+  <rect x="990" y="200" width="160" height="40" class="box"/><text x="998" y="217" class="t">Secrets Manager</text><text x="998" y="232" class="s">JWT, DB creds, Mongo URI</text>
+  <rect x="990" y="248" width="160" height="40" class="box"/><text x="998" y="265" class="t">Systems Manager</text><text x="998" y="280" class="s">Session Manager login</text>
+  <rect x="990" y="296" width="160" height="40" class="box"/><text x="998" y="313" class="t">IAM</text><text x="998" y="328" class="s">5 roles (see doc 07)</text>
+  <rect x="990" y="344" width="160" height="40" class="box"/><text x="998" y="361" class="t">SES</text><text x="998" y="376" class="s">OTP emails (optional)</text>
+  <rect x="990" y="392" width="160" height="40" class="box"/><text x="998" y="409" class="t">S3</text><text x="998" y="424" class="s">product images · ALB logs</text>
+  <rect x="990" y="440" width="160" height="40" class="box"/><text x="998" y="457" class="t">GitHub Actions / Jenkins</text><text x="998" y="472" class="s">build → ECR → ECS deploy</text>
+  <rect x="990" y="488" width="160" height="40" class="box"/><text x="998" y="505" class="t">MongoDB Atlas M0</text><text x="998" y="520" class="s">external, free (Stage 1–2)</text>
+  <rect x="990" y="536" width="160" height="40" class="box"/><text x="998" y="553" class="t">Budgets</text><text x="998" y="568" class="s">alert at ₹1,000 / month</text>
+
+  <!-- arrows -->
+  <path d="M200,113 L265,113 L265,130" class="lb"/>
+  <path d="M420,194 L420,252" class="lb"/>
+  <path d="M370,412 L370,465" class="ld"/>
+  <path d="M590,412 L590,465" class="ld"/>
+  <path d="M820,412 L820,465" class="ld"/>
+  <path d="M675,252 L675,194" class="l"/>
+  <path d="M750,160 L770,160" class="l"/>
+  <path d="M930,300 L990,124" class="l"/>
+  <path d="M930,310 L990,172" class="l"/>
+</svg>

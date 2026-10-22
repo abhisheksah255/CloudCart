@@ -1,0 +1,59 @@
+# CloudCart CI/CD — GitHub Actions  (Stage 2, Step 9)
+#
+# On every push to main:
+#   1. authenticate to AWS with OIDC (no long-lived access keys stored in GitHub)
+#   2. build & push the 6 images to ECR, tagged with the git SHA and "latest"
+#   3. force a new deployment of each ECS service so it pulls the new image
+#
+# Required GitHub repository settings -> Secrets and variables -> Actions -> Variables:
+#   AWS_REGION        e.g. ap-south-1
+#   AWS_ACCOUNT_ID    12-digit account id
+#   AWS_ROLE_ARN      arn:aws:iam::<account>:role/cloudcart-github-actions-role   (see docs/07-iam-roles-and-policies.md)
+#   ECS_CLUSTER       cloudcart-cluster
+
+name: Build and deploy to ECS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # needed for OIDC
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR: ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push images
+        run: |
+          TAG=${GITHUB_SHA::7}
+          for svc in auth product cart order payment; do
+            docker build -t $ECR/cloudcart/$svc-service:$TAG -t $ECR/cloudcart/$svc-service:latest services/$svc-service
+            docker push $ECR/cloudcart/$svc-service --all-tags
+          done
+          docker build -t $ECR/cloudcart/frontend:$TAG -t $ECR/cloudcart/frontend:latest frontend
+          docker push $ECR/cloudcart/frontend --all-tags
+
+      - name: Roll out new task revisions
+        run: |
+          for svc in auth product cart order payment frontend; do
+            aws ecs update-service --cluster ${{ vars.ECS_CLUSTER }} --service cc-$svc --force-new-deployment --region $AWS_REGION >/dev/null
+            echo "✔ cc-$svc redeploy triggered"
+          done

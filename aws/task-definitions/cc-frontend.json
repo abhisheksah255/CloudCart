@@ -1,0 +1,50 @@
+{
+  "family": "cc-frontend",
+  "networkMode": "bridge",
+  "requiresCompatibilities": [
+    "EC2"
+  ],
+  "executionRoleArn": "arn:aws:iam::{{ACCOUNT_ID}}:role/cloudcart-ecs-task-execution-role",
+  "containerDefinitions": [
+    {
+      "name": "frontend",
+      "image": "{{ACCOUNT_ID}}.dkr.ecr.{{REGION}}.amazonaws.com/cloudcart/frontend:latest",
+      "essential": true,
+      "cpu": 128,
+      "memoryReservation": 64,
+      "memory": 128,
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "hostPort": 0,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/cloudcart/frontend",
+          "awslogs-region": "{{REGION}}",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:80/health || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 30
+      }
+    }
+  ],
+  "tags": [
+    {
+      "key": "Project",
+      "value": "cloudcart"
+    }
+  ]
+}

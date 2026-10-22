@@ -1,0 +1,99 @@
+{
+  "family": "cc-order",
+  "networkMode": "bridge",
+  "requiresCompatibilities": [
+    "EC2"
+  ],
+  "executionRoleArn": "arn:aws:iam::{{ACCOUNT_ID}}:role/cloudcart-ecs-task-execution-role",
+  "containerDefinitions": [
+    {
+      "name": "order",
+      "image": "{{ACCOUNT_ID}}.dkr.ecr.{{REGION}}.amazonaws.com/cloudcart/order-service:latest",
+      "essential": true,
+      "cpu": 256,
+      "memoryReservation": 192,
+      "memory": 384,
+      "portMappings": [
+        {
+          "containerPort": 5004,
+          "hostPort": 0,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "JWT_SECRET",
+          "value": "{{JWT_SECRET}}"
+        },
+        {
+          "name": "INTERNAL_SERVICE_TOKEN",
+          "value": "{{INTERNAL_TOKEN}}"
+        },
+        {
+          "name": "NODE_ENV",
+          "value": "production"
+        },
+        {
+          "name": "DB_HOST",
+          "value": "{{RDS_ENDPOINT}}"
+        },
+        {
+          "name": "DB_PORT",
+          "value": "5432"
+        },
+        {
+          "name": "DB_USER",
+          "value": "postgres"
+        },
+        {
+          "name": "DB_PASSWORD",
+          "value": "{{DB_PASSWORD}}"
+        },
+        {
+          "name": "DB_SSL",
+          "value": "true"
+        },
+        {
+          "name": "PORT",
+          "value": "5004"
+        },
+        {
+          "name": "DB_NAME",
+          "value": "order_db"
+        },
+        {
+          "name": "CART_SERVICE_URL",
+          "value": "http://{{ALB_DNS}}"
+        },
+        {
+          "name": "PRODUCT_SERVICE_URL",
+          "value": "http://{{ALB_DNS}}"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/cloudcart/order",
+          "awslogs-region": "{{REGION}}",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:5004/health || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 30
+      }
+    }
+  ],
+  "tags": [
+    {
+      "key": "Project",
+      "value": "cloudcart"
+    }
+  ]
+}
