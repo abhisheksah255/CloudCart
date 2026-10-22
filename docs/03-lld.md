@@ -26,21 +26,21 @@
 | Variable | Local value | AWS Stage 1 | AWS Stage 2+ |
 |----------|-------------|-------------|--------------|
 | `PORT` | 5001…5005 | same | same |
-| `JWT_SECRET` | from `.env` | plain env var (random 32+ chars) | Secrets Manager `cloudcart/jwt` |
-| `INTERNAL_SERVICE_TOKEN` | from `.env` | plain env var (random 32+ chars) | Secrets Manager `cloudcart/internal-token` |
+| `JWT_SECRET` | from `.env` | `.env` on Jenkins baked into image (or plain task env var) | Stage 3: Secrets Manager `cloudcart/jwt` |
+| `INTERNAL_SERVICE_TOKEN` | from `.env` | same | Stage 3: Secrets Manager `cloudcart/internal-token` |
 | `NODE_ENV` | development | production | production |
 
 ### Per service
 
 | Service | Variable | Local (compose) | AWS Stage 1 | Notes |
 |---------|----------|-----------------|-------------|-------|
-| 🔐 auth | `MONGODB_URI` | `mongodb://admin:password@mongo:27017/cloudcart_auth?authSource=admin` | Atlas SRV string `mongodb+srv://user:pass@cluster0.xxxxx.mongodb.net/cloudcart_auth` | Stage 3: DocumentDB string + `tls=true&tlsCAFile=…` |
+| 🔐 auth | `MONGODB_URI` | `mongodb://admin:password@mongo:27017/cloudcart_auth?authSource=admin` | `mongodb+srv://cloudcart:<pw>@cloudcart.4dxau2t.mongodb.net/cloudcart_auth?retryWrites=true&w=majority` | Stage 3: DocumentDB string + `tls=true&tlsCAFile=…` |
 | | `REDIS_HOST` / `REDIS_PORT` | `redis` / `6379` | `redis` / `6379` (sidecar, via `links`) | Stage 2: ElastiCache primary endpoint |
 | | `DEV_SHOW_OTP` | `true` | `true` | `false` once SES is live |
 | | `AWS_REGION` | — | `us-east-1` | for SES client |
 | | `SES_SENDER_EMAIL` | unset | unset | Stage 2: verified identity |
 | 📦 product | `DB_HOST` | `postgres` | RDS endpoint | |
-| | `DB_PORT` / `DB_USER` / `DB_PASSWORD` | `5432` / `postgres` / `password` | `5432` / `postgres` / *master pwd* | password → Secrets Manager in Stage 2 |
+| | `DB_PORT` / `DB_USER` / `DB_PASSWORD` | `5432` / `postgres` / `password` | `5432` / `postgres` / *master pwd* | password → Secrets Manager in Stage 3 |
 | | `DB_NAME` | `product_db` | `product_db` | |
 | | `DB_SSL` | unset | `true` | RDS enforces TLS by default on PG 15+ |
 | | `REDIS_HOST` / `REDIS_PORT` | `redis` / `6379` | sidecar | |
@@ -53,6 +53,8 @@
 | 💳 payment | `DB_*` | as product, `DB_NAME=payment_db` | `DB_NAME=payment_db` | |
 | | `ORDER_SERVICE_URL` | `http://order-service:5004` | `http://<ALB-DNS>` | |
 
+> 💡 **Where the values live:** Stage 1-2 → `/opt/script/cloudcart/<service>/.env` on the Jenkins server, copied into the image by the pipeline (task-definition `environment` entries override them). Stage 3 → non-secrets in the task definition, secrets in Secrets Manager.
+>
 > 💡 In Stage 1 services reach each other **through the ALB** (`http://cloudcart-alb-123.us-east-1.elb.amazonaws.com/api/products/…`). The ALB rules route the path to the right target group just like a browser request. For this to work, `cloudcart-alb-sg` must allow inbound :80 **from `cloudcart-app-sg`** — not only from the internet.
 
 ---

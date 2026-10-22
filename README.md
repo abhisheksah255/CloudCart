@@ -25,9 +25,9 @@ CloudCart gives you a realistic application to deploy (five independent services
 
 | Stage | Nickname | What you learn | Daily cost (approx.) |
 |:-----:|----------|----------------|:--------------------:|
-| 🟢 **1** | **MVP** | VPC, security groups, IAM, ECR, RDS, ECS on EC2, ALB path routing, CloudWatch, SSM Session Manager | ~₹130 / day |
+| 🟢 **1** | **MVP** | VPC, security groups, IAM, ECR, RDS, Atlas, **bastion** (SSM + key pair), **Jenkins** with `.env` config files, ECS on EC2, ALB path routing, CloudWatch | ~₹240 / day (≈ ₹130 with Jenkins & bastion stopped) |
 | 🟡 **2** | **Hardened** | Private subnets + NAT, VPC endpoints, Secrets Manager, ElastiCache, HTTPS/ACM/Route 53, auto scaling, CI/CD (GitHub Actions / Jenkins) | ~₹250 / day |
-| 🔴 **3** | **Production** | CloudFront + WAF, Global Accelerator, Multi-AZ RDS, DocumentDB, backups, alarms, DR, runbooks | ~₹600+ / day |
+| 🔴 **3** | **Production** | **Secrets Manager + GitHub Actions (OIDC)**, CloudFront + WAF, Global Accelerator, Multi-AZ RDS, DocumentDB, backups, DR, runbooks | ~₹600+ / day |
 
 Every stage ends with a **✅ Verify** checklist and a **🧹 Teardown** note, so you only pay for what you are actively using.
 
@@ -137,8 +137,9 @@ cloudcart/
 ├── db/postgres/                ← SQL that creates the 3 databases + seed data
 ├── scripts/
 │   ├── smoke-test.sh           ← end-to-end test (local or AWS)
-│   └── build-and-push-ecr.sh   ← the only CLI step in Stage 1
-├── .github/workflows/deploy.yml← CI/CD for Stage 2
+│   └── build-and-push-ecr.sh   ← laptop fallback for pushing images
+├── Jenkinsfile                 ← CI/CD Stage 1-2 (parameterised, .env from /opt/script)
+├── .github/workflows/deploy.yml← CI/CD Stage 3 (OIDC, Secrets Manager)
 └── docs/                       ← everything listed above
 ```
 

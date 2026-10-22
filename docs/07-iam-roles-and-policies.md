@@ -44,8 +44,9 @@ flowchart TB
 | 1 | `cloudcart-ecs-instance-role` | `ec2.amazonaws.com` | 1 | `AmazonEC2ContainerServiceforEC2Role`, `AmazonSSMManagedInstanceCore` | — |
 | 2 | `cloudcart-ecs-task-execution-role` | `ecs-tasks.amazonaws.com` | 1 (+2) | `AmazonECSTaskExecutionRolePolicy` | `cloudcart-read-secrets` (Stage 2) |
 | 3 | `cloudcart-auth-task-role` | `ecs-tasks.amazonaws.com` | 2 | — | `ses:SendEmail`, `ses:SendRawEmail` |
-| 4 | `cloudcart-github-actions-role` | GitHub OIDC provider | 2 | `AmazonEC2ContainerRegistryPowerUser` | `ecs:UpdateService`, `ecs:DescribeServices` |
-| 5 | `cloudcart-jenkins-role` *(alt. to 4)* | `ec2.amazonaws.com` | 2 | `AmazonEC2ContainerRegistryPowerUser`, `AmazonSSMManagedInstanceCore` | `ecs:UpdateService` |
+| 4 | `cloudcart-github-actions-role` | GitHub OIDC provider | 3 | `AmazonEC2ContainerRegistryPowerUser` | `ecs:UpdateService`, `ecs:DescribeServices` |
+| 5 | `cloudcart-jenkins-role` | `ec2.amazonaws.com` | 1 | `AmazonEC2ContainerRegistryPowerUser`, `AmazonSSMManagedInstanceCore` | `cloudcart-jenkins-deploy` (`ecs:UpdateService`, `ecs:DescribeServices` on the cluster's services) |
+| 5b | `cloudcart-bastion-role` | `ec2.amazonaws.com` | 1 | `AmazonSSMManagedInstanceCore` | — |
 | 6 | `AWSServiceRoleForECS` *(service-linked, auto-created)* | ECS | 1 | — | lets ECS register targets in your ALB, manage ENIs |
 | 7 | `AWSServiceRoleForAutoScaling` *(auto)* | ASG | 1 | — | |
 | — | *your IAM user* (console + CLI) | you | 0 | `AdministratorAccess` for a learning account | MFA on! |
@@ -138,9 +139,13 @@ plus managed `AmazonEC2ContainerRegistryPowerUser` (push/pull). If the workflow 
 
 ---
 
-## 5️⃣ `cloudcart-jenkins-role` — if you choose Jenkins
+## 5️⃣ `cloudcart-jenkins-role` — the Jenkins server's identity (Stage 1)
 
-Same permissions as #4, but trust = `ec2.amazonaws.com` and attached as the **instance profile** of the Jenkins EC2. Add `AmazonSSMManagedInstanceCore` so you never open port 22.
+Same permissions as #4, but trust = `ec2.amazonaws.com` and attached as the **instance profile** of the Jenkins EC2, so the pipeline's `aws ecr get-login-password` and `aws ecs update-service` work with no stored keys — the same way the TSRS Jenkins box works. `AmazonSSMManagedInstanceCore` gives you a shell without opening 22 (the key pair is the fallback).
+
+## 5️⃣b `cloudcart-bastion-role`
+
+Only `AmazonSSMManagedInstanceCore`. The bastion needs no AWS API access — it is a network hop to the databases, nothing more. Over-privileging a bastion is a classic mistake: it's the most exposed box you own.
 
 ---
 

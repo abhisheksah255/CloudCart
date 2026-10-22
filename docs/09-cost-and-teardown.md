@@ -40,8 +40,9 @@ pie title Stage 1 daily cost ≈ ₹130
 | MongoDB Atlas M0 | free | 0 | 0 | — | — |
 | SES | $0.10/1000 mails | — | ~0 | ~0 | ❌ |
 | GitHub Actions | free (public repo) / 2000 min | — | 0 | 0 | — |
-| Jenkins t3.medium (optional) | $0.0448/h | — | ₹90 | ₹90 | ✅ |
-| **Total ≈** | | **₹130/day** | **≈ ₹250/day** (no Jenkins) | **≈ ₹600+/day** | |
+| Jenkins t3.medium | $0.0448/h | ₹90 | ₹90 | — (replaced by GitHub Actions) | ✅ stop when idle |
+| Bastion t3.micro | $0.0104/h | ₹20 | ₹20 | ₹20 | ✅ stop when idle |
+| **Total ≈** | | **₹240/day** (₹130 with Jenkins+bastion stopped) | **≈ ₹350/day** | **≈ ₹600+/day** | |
 
 > 🧠 **Three lessons hiding in this table**
 > 1. The **ALB and NAT bill per hour whether or not anyone uses them** — they are the first things to delete when pausing.
@@ -75,7 +76,10 @@ Copy this table into `docs/LEDGER.md` (git-ignored if you note secrets there —
 | 6 | ECS | capacity provider | S2 | | | ☐ |
 | 7 | ECS | cluster `cloudcart-cluster` | S1 | | deleting cluster deletes its ASG + launch template (console wizard ones) | ☐ |
 | 8 | EC2 | Auto Scaling group / launch template (if still there) | S1 | ₹45 | confirm 0 instances | ☐ |
-| 9 | EC2 | Jenkins instance (if any) | S2 | ₹90 | | ☐ |
+| 9 | EC2 | `cloudcart-jenkins` t3.medium (+ its AMI & snapshot) | S1 | ₹90 | stop when idle; delete AMI + snapshot at teardown | ☐ |
+| 9b | EC2 | `cloudcart-bastion` t3.micro | S1 | ₹20 | | ☐ |
+| 9c | EC2 | key pair `cloudcart-key` | S1 | 0 | delete + shred the .pem | ☐ |
+| 9d | S3 | `cloudcart-config-backup` | S2 | ~0 | empty then delete | ☐ |
 | 10 | ELB | `cloudcart-alb` | S1 | ₹48 | turn off deletion protection first | ☐ |
 | 11 | ELB | target groups ×6 | S1 | | | ☐ |
 | 12 | RDS | `cloudcart-postgres` | S1 | ₹33 | deletion protection off; **skip final snapshot** for a demo | ☐ |
@@ -91,7 +95,7 @@ Copy this table into `docs/LEDGER.md` (git-ignored if you note secrets there —
 | 22 | VPC | **NAT gateways** ×1–2 | S2 | ₹90 each | wait *Deleted* (≈1 min) | ☐ |
 | 23 | VPC | **Elastic IPs** ×1–2 → *Release* | S2 | ₹3/day if unattached! | | ☐ |
 | 24 | VPC | interface endpoints ×7 | S2 | ₹140 | | ☐ |
-| 25 | VPC | security groups: data → app → alb → vpce (reverse of creation) | S1 | | VPC delete does this too | ☐ |
+| 25 | VPC | security groups: data → app → jenkins → bastion → alb → vpce (reverse of creation) | S1 | | VPC delete does this too | ☐ |
 | 26 | VPC | `cloudcart-vpc` (deletes subnets, route tables, IGW, S3 endpoint) | S1 | | fails if anything above remains — the error names it | ☐ |
 | 27 | IAM | roles ×5, OIDC provider, inline policies | S1/S2 | | | ☐ |
 | 28 | ACM | certificate (us-east-1, shared by ALB and CloudFront) | S2/S3 | | after ALB/CloudFront gone | ☐ |

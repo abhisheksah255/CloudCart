@@ -1,36 +1,73 @@
-# CloudCart CI/CD — GitHub Actions  (Stage 2, Step 9)
+# =====================================================================
+#  CloudCart — GitHub Actions CI/CD  (Stage 3, replaces the Jenkinsfile)
+# ---------------------------------------------------------------------
+#  Same five steps as the Jenkins job, but:
+#   • keyless: GitHub exchanges an OIDC token for a short-lived AWS role
+#   • no .env files anywhere — secrets are injected by ECS from
+#     Secrets Manager (task-definition "secrets": [...]), so the image
+#     is identical in every environment
+#   • one job per service (matrix) so a broken frontend build doesn't
+#     block the auth deploy
 #
-# On every push to main:
-#   1. authenticate to AWS with OIDC (no long-lived access keys stored in GitHub)
-#   2. build & push the 6 images to ECR, tagged with the git SHA and "latest"
-#   3. force a new deployment of each ECS service so it pulls the new image
+#  Triggers:
+#   • push to main            → build & deploy ALL services
+#   • manual (Actions → Run)  → choose one service and a branch, like the Jenkins parameters
 #
-# Required GitHub repository settings -> Secrets and variables -> Actions -> Variables:
-#   AWS_REGION        e.g. us-east-1
-#   AWS_ACCOUNT_ID    12-digit account id
-#   AWS_ROLE_ARN      arn:aws:iam::<account>:role/cloudcart-github-actions-role   (see docs/07-iam-roles-and-policies.md)
-#   ECS_CLUSTER       cloudcart-cluster
-
+#  Repository → Settings → Secrets and variables → Actions → *Variables*:
+#   AWS_REGION      us-east-1
+#   AWS_ACCOUNT_ID  856698935369
+#   AWS_ROLE_ARN    arn:aws:iam::856698935369:role/cloudcart-github-actions-role   (docs/07)
+#   ECS_CLUSTER     cloudcart-cluster
+# =====================================================================
 name: Build and deploy to ECS
 
 on:
   push:
     branches: [main]
+    paths: ['services/**', 'frontend/**', '.github/workflows/deploy.yml']
   workflow_dispatch:
+    inputs:
+      service:
+        description: 'Service to deploy'
+        type: choice
+        default: all
+        options: [all, auth, product, cart, order, payment, frontend]
 
 permissions:
-  id-token: write   # needed for OIDC
+  id-token: write      # OIDC
   contents: read
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
   ECR: ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
 
 jobs:
-  build-and-deploy:
+  # ---- decide which services to build -------------------------------------------------
+  plan:
     runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.set.outputs.services }}
     steps:
-      - uses: actions/checkout@v4
+      - id: set
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.service }}" != "all" ]; then
+            echo 'services=["${{ inputs.service }}"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'services=["auth","product","cart","order","payment","frontend"]' >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---- build, push, deploy — one job per service --------------------------------------
+  deploy:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJson(needs.plan.outputs.services) }}
+    steps:
+      - name: Cloning Git
+        uses: actions/checkout@v4
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -38,22 +75,35 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to ECR
+      - name: Login to AWS ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push images
+      - name: Docker Build and Push
+        id: build
         run: |
+          SVC=${{ matrix.service }}
           TAG=${GITHUB_SHA::7}
-          for svc in auth product cart order payment; do
-            docker build -t $ECR/cloudcart/$svc-service:$TAG -t $ECR/cloudcart/$svc-service:latest services/$svc-service
-            docker push $ECR/cloudcart/$svc-service --all-tags
-          done
-          docker build -t $ECR/cloudcart/frontend:$TAG -t $ECR/cloudcart/frontend:latest frontend
-          docker push $ECR/cloudcart/frontend --all-tags
+          if [ "$SVC" = "frontend" ]; then CTX=frontend; REPO=cloudcart/frontend; else CTX=services/$SVC-service; REPO=cloudcart/$SVC-service; fi
+          echo "=== Building $REPO:$TAG ==="
+          docker build -t $ECR/$REPO:$TAG -t $ECR/$REPO:latest $CTX
+          docker push $ECR/$REPO --all-tags
+          echo "✅ Image pushed: $ECR/$REPO:$TAG"
 
-      - name: Roll out new task revisions
+      - name: ECS Deployment
         run: |
-          for svc in auth product cart order payment frontend; do
-            aws ecs update-service --cluster ${{ vars.ECS_CLUSTER }} --service cc-$svc --force-new-deployment --region $AWS_REGION >/dev/null
-            echo "✔ cc-$svc redeploy triggered"
-          done
+          # family name only → latest ACTIVE revision (never pin family:N here)
+          aws ecs update-service --cluster $ECS_CLUSTER --service cc-${{ matrix.service }} \
+            --task-definition cc-${{ matrix.service }} --force-new-deployment > /dev/null
+          echo "✅ cc-${{ matrix.service }}: new deployment triggered"
+
+      - name: Wait for stable
+        run: aws ecs wait services-stable --cluster $ECS_CLUSTER --services cc-${{ matrix.service }}
+
+      - name: Result
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Deployment successful: cc-${{ matrix.service }} @ ${GITHUB_SHA::7}"
+          else
+            echo "❌ Pipeline failed! Check ECS at: https://$AWS_REGION.console.aws.amazon.com/ecs/v2/clusters/$ECS_CLUSTER/services/cc-${{ matrix.service }}/logs"
+          fi

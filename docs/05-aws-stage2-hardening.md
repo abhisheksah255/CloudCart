@@ -12,20 +12,20 @@ Work through the steps **in order** — each one has a ✅ checkpoint; if it fai
 flowchart LR
     subgraph S1["🟢 Stage 1"]
         A1[host in public subnet<br/>public IP]
-        B1[env vars in task defs]
+        B1[.env files on Jenkins<br/>Jenkins + bastion public]
         C1[3 Redis sidecars]
         D1[http://alb-dns]
         E1[services call via ALB]
-        F1[push from laptop]
+        F1[Jenkins job, manual trigger]
         G1[1 host, no scaling]
     end
     subgraph S2["🟡 Stage 2"]
         A2[host in private subnet<br/>NAT + VPC endpoints]
-        B2[Secrets Manager]
+        B2[Jenkins + bastion in<br/>private subnets, SSM only]
         C2[ElastiCache Redis]
         D2[https://shop.yourdomain.com<br/>ACM + Route 53]
         E2[ECS Service Connect]
-        F2[GitHub Actions OIDC<br/>or Jenkins]
+        F2[Jenkins webhook on push<br/>+ pinned image tags]
         G2[ASG 1-3 + service auto scaling<br/>+ CloudWatch alarms]
     end
     A1-->A2
@@ -41,13 +41,13 @@ flowchart LR
 |:----:|------|:----------------:|
 | 1 | NAT gateway + VPC endpoints | +₹90 (NAT) +₹60 (5 interface endpoints) |
 | 2 | ElastiCache cache.t4g.micro | +₹35 |
-| 3 | Secrets Manager (4 secrets) | +₹4 |
+| 3 | Jenkins + bastion moved private | ₹0 |
 | 4 | ACM + Route 53 hosted zone | +₹1.5 (zone) |
 | 5 | Service Connect | ₹0 |
 | 6 | Second EC2 host when scaled | +₹45 only while scaled |
 | 7 | CloudWatch alarms + Container Insights | +₹10 |
 | 8 | SES | ₹0 (sandbox) |
-| 9 | GitHub Actions | ₹0 · Jenkins alternative +₹80 |
+| 9 | Jenkins webhook + tags | ₹0 |
 
 > 💡 **Skipping NAT to save money?** You can do Steps 2–9 while keeping the host in the public subnet. Only Step 1 depends on NAT. But Step 1 is the single most important production habit — do it at least once.
 
@@ -103,6 +103,9 @@ ECS → `cloudcart-cluster` → **Infrastructure** → the Auto Scaling group li
 
 Then **Instance refresh → Start instance refresh** (min healthy 0 %) — the old host is replaced by one in a private subnet. Tasks restart on it (2–4 min).
 
+### 1.4b Move Jenkins to a private subnet (TSRS layout)
+In TSRS the Jenkins box sits in a private subnet and is reached through the bastion or SSM. Stop `cloudcart-jenkins` → *Actions → Networking* can't move subnets, so: **create an AMI** (Actions → Image → Create image `cloudcart-jenkins-ami`) → **Launch instance from AMI** into `cloudcart-subnet-private1-us-east-1a`, public IP **Disable**, same SG/role/key → terminate the old one. Reach the UI via an SSH tunnel through the bastion: `ssh -i cloudcart-key.pem -L 8080:<jenkins-private-ip>:8080 ec2-user@<bastion-ip>` then open `http://localhost:8080`. Builds still reach ECR/GitHub via the NAT. The bastion stays public — it *is* the front door.
+
 ### 1.5 Lock Atlas down
 Atlas → Network Access → delete `0.0.0.0/0` → add the **NAT Elastic IP**/32.
 
@@ -152,56 +155,22 @@ For `cc-auth`, `cc-product`, `cc-cart`: **Task definitions → family → Create
 
 ---
 
-## Step 3 — Secrets Manager (20 min)
+## Step 3 — Harden the `.env` config store on Jenkins (10 min)
 
-### 3.1 Create the secrets
+Secrets Manager is a **Stage 3** step (together with GitHub Actions). For now the TSRS pattern stays — `.env` files on the Jenkins server baked into images — but make it safer:
 
-**Secrets Manager → Store a new secret** (×4)
-
-| Secret name | Type | Key/value |
-|-------------|------|-----------|
-| `cloudcart/jwt` | Other type of secret → **Plaintext** | the JWT secret string |
-| `cloudcart/internal-token` | Plaintext | the internal token string |
-| `cloudcart/db-password` | Plaintext | the RDS master password |
-| `cloudcart/mongodb-uri` | Plaintext | the full Atlas URI |
-
-Leave rotation off. Tag `Project` = `cloudcart`.
-
-> 🧠 Plaintext secrets (not key/value JSON) let ECS inject the whole value into one env var with a plain ARN — no `:key::` suffix needed.
-
-### 3.2 Allow the execution role to read them
-
-IAM → Roles → `cloudcart-ecs-task-execution-role` → **Add permissions → Create inline policy → JSON**:
-
-```json
-{ "Version": "2012-10-17", "Statement": [{
-  "Effect": "Allow",
-  "Action": ["secretsmanager:GetSecretValue"],
-  "Resource": "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:cloudcart/*"
-}]}
-```
-Name: `cloudcart-read-secrets`.
-
-### 3.3 Reference them from the task definitions
-
-New revision of each family → JSON: **remove** `JWT_SECRET`, `INTERNAL_SERVICE_TOKEN`, `DB_PASSWORD`, `MONGODB_URI` from `environment` and add:
-
-```json
-"secrets": [
-  { "name": "JWT_SECRET",             "valueFrom": "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:cloudcart/jwt-AbCdEf" },
-  { "name": "INTERNAL_SERVICE_TOKEN", "valueFrom": "arn:…:secret:cloudcart/internal-token-XxYyZz" },
-  { "name": "DB_PASSWORD",            "valueFrom": "arn:…:secret:cloudcart/db-password-…" },
-  { "name": "MONGODB_URI",            "valueFrom": "arn:…:secret:cloudcart/mongodb-uri-…" }
-]
-```
-(only the ones each service needs — see LLD §2). Copy each ARN from the secret's detail page. Update the six services to the new revisions.
+| Do | Why |
+|---|---|
+| `chmod 700 /opt/script/cloudcart && chmod 600 /opt/script/cloudcart/*/.env`, owner `jenkins` | only the Jenkins process can read them |
+| Add to the pipeline's *Copy Runtime Config* a `sha256sum` echo of each `.env` (already validates presence) | you can tell *which* config a build used from the console log, without printing the values |
+| Keep `/opt/script` **out of git** and take an encrypted backup: `sudo tar czf - /opt/script \| gpg -c > cloudcart-config-$(date +%F).tgz.gpg` to S3 bucket `cloudcart-config-backup` (block public access, SSE-S3) | the Jenkins disk is the only copy — if the instance dies, so do your secrets |
+| ECR → each repo → **Lifecycle policy**: expire untagged after 1 day, keep last 10 tagged | every build moves `latest`; the images contain secrets, so don't keep hundreds of them |
+| Rotate `JWT_SECRET` once as an exercise: change it in all five `.env`, run SERVICE=all | users are logged out (tokens invalid) — that's the expected blast radius |
 
 ### ✅ Verify
-- Services 1/1 running. Open a task → **Configuration → Environment**: the four values show as *valueFrom …* not plain text.
-- Smoke test passes (JWT still validates everywhere → all services got the same secret).
-- ❌ Task stuck in *PENDING → STOPPED* with `ResourceInitializationError: unable to pull secrets`? The inline policy ARN pattern or the Secrets Manager VPC endpoint is wrong.
+`sudo -u jenkins cat /opt/script/cloudcart/auth/.env` works; `sudo -u ec2-user cat …` → *Permission denied*. Encrypted backup object visible in S3.
 
-📒 Ledger: 4 secrets (₹0.4 each/month… trivial), inline policy.
+📒 Ledger: S3 bucket `cloudcart-config-backup`.
 
 ---
 
@@ -309,30 +278,21 @@ Login with the verified recipient email → the OTP arrives by email and is **no
 
 ---
 
-## Step 9 — CI/CD (45 min)
+## Step 9 — CI/CD: from manual Jenkins builds to automatic deploys (30 min)
 
-Pick one. GitHub Actions is free and keyless; Jenkins teaches you the self-hosted way (and you mentioned both).
+You already deploy with Jenkins (Stage 1 Step 4). Make it behave like a real pipeline:
 
-### Option A — GitHub Actions with OIDC (recommended)
+### 9.1 Trigger on push (webhook)
+Jenkins → job `cloudcart-deploy` → Configure → *Build Triggers* → ✅ **GitHub hook trigger for GITScm polling**. GitHub repo → Settings → Webhooks → Add: Payload URL `http://<jenkins-public-or-tunnel>:8080/github-webhook/`, content type JSON, *Just the push event*. If Jenkins is private (Step 1.4b) a webhook can't reach it — use **Poll SCM** `H/5 * * * *` instead (checks every 5 min), which is what many closed networks do.
 
-1. **IAM → Identity providers → Add provider**: OpenID Connect, URL `https://token.actions.githubusercontent.com`, audience `sts.amazonaws.com`.
-2. **IAM → Roles → Create role → Web identity** → the provider above, audience `sts.amazonaws.com`, GitHub organization = your username, repository = `cloudcart` → permissions: `AmazonEC2ContainerRegistryPowerUser` + inline `ecs:UpdateService`, `ecs:DescribeServices` on your cluster's services → name `cloudcart-github-actions-role`.
-3. GitHub repo → **Settings → Secrets and variables → Actions → Variables**: `AWS_REGION=us-east-1`, `AWS_ACCOUNT_ID`, `AWS_ROLE_ARN`, `ECS_CLUSTER=cloudcart-cluster`.
-4. Push to `main`. `.github/workflows/deploy.yml` builds 6 images, pushes `:sha` and `:latest`, then `update-service --force-new-deployment` ×6.
+### 9.2 Deploy by immutable tag, not `latest`
+The Jenkinsfile already pushes `<timestamp>` **and** `latest`. For rollback discipline, register task-definition revisions that reference the timestamp tag: ECS → task def → new revision → image `…:20261022-213000`. Rolling back = *Update service → previous revision*. (The GitHub Actions workflow in Stage 3 automates this.)
 
-### Option B — Jenkins on EC2
-
-| Item | Value |
-|------|-------|
-| Instance | t3.medium (Jenkins + Docker builds need ~4 GB), Amazon Linux 2023, **public subnet**, SG `cloudcart-jenkins-sg` (8080 from *My IP*, nothing else; SSM for shell) |
-| IAM instance role | `cloudcart-jenkins-role`: `AmazonEC2ContainerRegistryPowerUser`, `AmazonSSMManagedInstanceCore`, inline `ecs:UpdateService` |
-| Install | `sudo dnf install -y java-17-amazon-corretto docker git && sudo systemctl enable --now docker && sudo usermod -aG docker jenkins` + Jenkins repo per jenkins.io |
-| Pipeline | *Pipeline from SCM* → your repo → `Jenkinsfile` (included in the repo root; mirrors the GitHub workflow) |
+### 9.3 Protect the job
+Jenkins → Manage → Security: disable anonymous read; create a `deployer` user; *Build with Parameters* only for that role. Enable **CSRF protection** (default). Take an AMI of Jenkins monthly (your only copy of the config + secrets).
 
 ### ✅ Verify
-Change the shop title in `frontend/index.html`, commit, push → pipeline green → within 3 min the new title is live at `https://shop.yourdomain.com`. ECS → cc-frontend → *Deployments* shows a new revision rolled out with **zero downtime** (two hosts, 100/200 %).
-
-📒 Ledger: OIDC provider, `cloudcart-github-actions-role` *(or Jenkins EC2 ≈ ₹80/day + role + SG)*.
+Push a commit that changes the shop title in `frontend/index.html` → Jenkins starts within 5 min → *Wait for stable* green → new title live. Then roll `cc-frontend` back to the previous revision in the console and confirm the old title returns.
 
 ---
 
@@ -353,11 +313,11 @@ Change the shop title in `frontend/index.html`, commit, push → pipeline green 
 
 - [ ] Hosts have no public IP; Session Manager still works
 - [ ] `https://shop.yourdomain.com` with padlock; HTTP redirects
-- [ ] Task definitions contain no plaintext secrets
+- [ ] Jenkins and `.env` store are private, backed up and permission-locked
 - [ ] `docker ps` shows no Redis sidecars; ElastiCache has your cart keys
 - [ ] Load test scaled tasks and hosts out **and back in**
 - [ ] You received an alarm email
-- [ ] A `git push` deployed a change with zero downtime
-- [ ] 📌 **Commit and push** (workflow file, any task-def JSON changes with secrets stripped)
+- [ ] A `git push` triggered Jenkins and deployed with zero downtime; you rolled one service back
+- [ ] 📌 **Commit and push**
 
 ➡️ Next: [06 · 🔴 Stage 3 — Production](06-aws-stage3-production.md)

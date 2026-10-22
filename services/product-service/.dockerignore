@@ -1,5 +1,9 @@
 node_modules
 npm-debug.log
-.env
-.env.*
 logs
+# NOTE: .env is deliberately NOT ignored.
+# Stage 1-2 (Jenkins): the pipeline copies /opt/script/cloudcart/<service>/.env into this
+# folder right before `docker build`, so it is baked into the image and read by dotenv.
+# Task-definition environment variables still take precedence (dotenv never overrides
+# an existing process.env value). Stage 3 removes the file and uses Secrets Manager.
+# Locally there is no .env in this folder (docker-compose injects env), so nothing leaks.

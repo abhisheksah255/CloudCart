@@ -129,6 +129,20 @@ flowchart TD
 
 ---
 
+## 6b. Jenkins pipeline (Stage 1-2)
+
+| Symptom | Cause → fix |
+|---|---|
+| *Copy Runtime Config* fails: `/opt/script/cloudcart/<svc>/.env missing` | file not created, or wrong folder name (`auth`, not `auth-service`) |
+| `JWT_SECRET missing in <svc>/.env` | key absent or commented out (`#`) |
+| `docker: permission denied` | `jenkins` user not in the `docker` group → `sudo usermod -aG docker jenkins && sudo systemctl restart jenkins` |
+| `no basic auth credentials` on push | `aws ecr get-login-password` failed → instance role lacks `AmazonEC2ContainerRegistryPowerUser`, or region mismatch |
+| `An error occurred (AccessDeniedException) … ecs:UpdateService` | inline policy `cloudcart-jenkins-deploy` missing / wrong cluster ARN |
+| *ECS Deployment* OK but *Wait for stable* times out | the new task is unhealthy → ECS → service → stopped tasks → logs (section 3) |
+| Build works, but the container still shows old config | the task definition `environment` overrides `.env`; or `latest` cached on the host — `--force-new-deployment` re-pulls, but check the image digest on the task matches ECR |
+| Disk full on Jenkins | `docker system prune -af` ; the pipeline prunes images >24h old already |
+| Webhook never fires (private Jenkins) | GitHub can't reach a private IP → use *Poll SCM* |
+
 ## 7. Useful commands (via Session Manager on an ECS host)
 
 ```bash

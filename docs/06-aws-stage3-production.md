@@ -39,6 +39,60 @@ flowchart LR
 
 ---
 
+## Step 0 — Secrets Manager: get the secrets out of the images (30 min)
+
+Until now every image carried a `.env` copied from the Jenkins box. In production the image must be **the same artifact everywhere** and secrets must live in a vault with audit + rotation. This is the step TSRS is heading to as well.
+
+### 0.1 Create the secrets
+**Secrets Manager → Store a new secret** (×4), type *Other → Plaintext*, tag `Project=cloudcart`:
+
+| Secret name | Value |
+|---|---|
+| `cloudcart/jwt` | the JWT secret currently in the `.env` files (keep the same value so existing logins survive) |
+| `cloudcart/internal-token` | the internal token |
+| `cloudcart/db-password` | RDS master password |
+| `cloudcart/mongodb-uri` | `mongodb+srv://cloudcart:<pw>@cloudcart.4dxau2t.mongodb.net/cloudcart_auth?retryWrites=true&w=majority` (Stage 3 Step 1.3 replaces with the DocumentDB URI) |
+
+### 0.2 Let the execution role read them
+IAM → `cloudcart-ecs-task-execution-role` → Add permissions → inline policy `cloudcart-read-secrets`:
+```json
+{ "Version": "2012-10-17", "Statement": [{ "Effect": "Allow", "Action": "secretsmanager:GetSecretValue",
+  "Resource": "arn:aws:secretsmanager:us-east-1:856698935369:secret:cloudcart/*" }] }
+```
+(Private subnets need the Secrets Manager VPC endpoint from Stage 2 Step 1.3, or NAT.)
+
+### 0.3 Reference them from the task definitions
+New revision of each family (JSON): keep the non-secret `environment` entries, add
+```json
+"secrets": [
+  { "name": "JWT_SECRET",             "valueFrom": "arn:aws:secretsmanager:us-east-1:856698935369:secret:cloudcart/jwt-XXXXXX" },
+  { "name": "INTERNAL_SERVICE_TOKEN", "valueFrom": "…:secret:cloudcart/internal-token-XXXXXX" },
+  { "name": "DB_PASSWORD",            "valueFrom": "…:secret:cloudcart/db-password-XXXXXX" },
+  { "name": "MONGODB_URI",            "valueFrom": "…:secret:cloudcart/mongodb-uri-XXXXXX" }
+]
+```
+(only the ones each service needs — LLD §2). Because ECS-injected env vars take precedence over the baked `.env`, you can switch service by service.
+
+### 0.4 Remove the `.env` from the images
+Delete `/opt/script/cloudcart/*/.env` contents down to the **non-secret** keys (PORT, DB_HOST, URLs) or delete the files entirely and move those keys into the task-definition `environment`. Rebuild once via Jenkins (or Step 0.5 below). Now `docker run <image> env` shows no secrets.
+
+### 0.5 Switch CI/CD to GitHub Actions (OIDC, keyless)
+1. **IAM → Identity providers → Add**: OpenID Connect, URL `https://token.actions.githubusercontent.com`, audience `sts.amazonaws.com`.
+2. **IAM → Roles → Create → Web identity** → that provider, audience `sts.amazonaws.com`, GitHub org = your username, repo `cloudcart` → attach `AmazonEC2ContainerRegistryPowerUser` + the same inline deploy policy as `cloudcart-jenkins-role` → name `cloudcart-github-actions-role`. (Trust-policy detail in doc 07 §4.)
+3. GitHub → repo → Settings → *Secrets and variables → Actions → Variables*: `AWS_REGION=us-east-1`, `AWS_ACCOUNT_ID=856698935369`, `AWS_ROLE_ARN=arn:aws:iam::856698935369:role/cloudcart-github-actions-role`, `ECS_CLUSTER=cloudcart-cluster`.
+4. Push to `main` → **Actions** tab → `Build and deploy to ECS` runs six parallel jobs (one per service). *Run workflow* lets you pick a single service, like the Jenkins parameters.
+5. Decommission Jenkins: stop the instance (keep the AMI for a month), delete the webhook/poll trigger. 📒 Ledger.
+
+### ✅ Verify
+- Task → *Configuration → Environment*: secrets show as `valueFrom`, no plaintext.
+- CloudTrail → `GetSecretValue` events from the execution role at each task start.
+- A push deploys via Actions with zero downtime; the ECR image pulled by `docker run … env` contains no `JWT_SECRET`.
+- `docker history <image>` shows no `.env` layer.
+
+📒 Ledger: 4 secrets, OIDC provider, `cloudcart-github-actions-role`.
+
+---
+
 ## Step 1 — High availability for data (30 min + waits)
 
 ### 1.1 RDS Multi-AZ
@@ -235,9 +289,9 @@ EFS → file system → *Mount targets: 2 available*. Write a file from one task
 | Edge | HTTPS, HTTP→HTTPS, WAF managed rules, ALB locked to CloudFront | Global Accelerator, custom WAF rules |
 | Compute | ≥ 2 hosts across AZs, service auto scaling, 100/200 deploys, health checks on `/health` | Spot for burst, Graviton |
 | Data | Multi-AZ RDS, 7-day backups, **restore tested**, deletion protection, encryption at rest | read replica, RDS Proxy |
-| Secrets | Secrets Manager, no secrets in git/task-def/env dumps | rotation |
+| Secrets | Secrets Manager, no secrets in git/images/env dumps | rotation |
 | Observability | logs with retention, 4+ alarms to a human, dashboard | Container Insights, X-Ray tracing |
-| Delivery | CI/CD with rollback tested | blue/green (CodeDeploy), canary |
+| Delivery | keyless CI/CD (GitHub Actions OIDC) with rollback tested | blue/green (CodeDeploy), canary |
 | Ops | runbooks ×5, on-call contact, budget + anomaly alerts | game-day (kill a host, fail over RDS) |
 | Compliance | CloudTrail, tags on everything, IAM least privilege reviewed | GuardDuty, Access Analyzer |
 
@@ -245,6 +299,7 @@ EFS → file system → *Mount targets: 2 available*. Write a file from one task
 
 ## ✅ Stage 3 done when
 
+- [ ] Secrets live only in Secrets Manager; images contain no `.env`; GitHub Actions deploys keylessly
 - [ ] You killed an EC2 host and failed over RDS — users never noticed
 - [ ] Direct ALB access returns 403; WAF blocked an injection and rate-limited OTP spam
 - [ ] `x-cache: Hit from cloudfront` on static, `Miss` on API
