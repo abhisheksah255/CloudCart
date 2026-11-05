@@ -51,7 +51,7 @@ Until now every image carried a `.env` copied from the Jenkins box. In productio
 | `cloudcart/jwt` | the JWT secret currently in the `.env` files (keep the same value so existing logins survive) |
 | `cloudcart/internal-token` | the internal token |
 | `cloudcart/db-password` | RDS master password |
-| `cloudcart/mongodb-uri` | `mongodb+srv://cloudcart:<pw>@cloudcart.4dxau2t.mongodb.net/cloudcart_auth?retryWrites=true&w=majority` (Stage 3 Step 1.3 replaces with the DocumentDB URI) |
+| `cloudcart/mongodb-uri` | `mongodb+srv://cloudcart:Lhein7udXmGNEhV4@cloudcart.4dxau2t.mongodb.net/cloudcart_auth?retryWrites=true&w=majority` (Stage 3 Step 1.3 replaces with the DocumentDB URI) |
 
 ### 0.2 Let the execution role read them
 IAM → `cloudcart-ecs-task-execution-role` → Add permissions → inline policy `cloudcart-read-secrets`:

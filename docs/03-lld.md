@@ -34,7 +34,7 @@
 
 | Service | Variable | Local (compose) | AWS Stage 1 | Notes |
 |---------|----------|-----------------|-------------|-------|
-| 🔐 auth | `MONGODB_URI` | `mongodb://admin:password@mongo:27017/cloudcart_auth?authSource=admin` | `mongodb+srv://cloudcart:<pw>@cloudcart.4dxau2t.mongodb.net/cloudcart_auth?retryWrites=true&w=majority` | Stage 3: DocumentDB string + `tls=true&tlsCAFile=…` |
+| 🔐 auth | `MONGODB_URI` | `mongodb://admin:password@mongo:27017/cloudcart_auth?authSource=admin` | `mongodb+srv://cloudcart:Lhein7udXmGNEhV4@cloudcart.4dxau2t.mongodb.net/cloudcart_auth?retryWrites=true&w=majority` | Stage 3: DocumentDB string + `tls=true&tlsCAFile=…` |
 | | `REDIS_HOST` / `REDIS_PORT` | `redis` / `6379` | `redis` / `6379` (sidecar, via `links`) | Stage 2: ElastiCache primary endpoint |
 | | `DEV_SHOW_OTP` | `true` | `true` | `false` once SES is live |
 | | `AWS_REGION` | — | `us-east-1` | for SES client |

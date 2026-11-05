@@ -77,8 +77,8 @@ On **every** resource that has a *Tags* section, add `Project` = `cloudcart`. At
 1. https://www.mongodb.com/atlas → sign up → **Create** → **M0 Free** → Provider **AWS**, Region **N. Virginia (us-east-1)**, name `cloudcart` → Create.
 2. **Security → Database Access → Add new database user**: username `cloudcart`, a strong password (save it), role *Read and write to any database*.
 3. **Security → Network Access → Add IP address** → **Allow access from anywhere** (`0.0.0.0/0`). ⚠️ Fine for Stage 1 because the user has a strong password; in Stage 2 you'll restrict this to your NAT gateway's IP.
-4. **Connect → Drivers** → copy the URI. Replace `<password>` and add the database name **`/cloudcart_auth`** before the `?` (Atlas gives you the URI without a database; without this, Mongoose writes to `test`):
-   `mongodb+srv://cloudcart:YOURPASSWORD@cloudcart.4dxau2t.mongodb.net/cloudcart_auth?retryWrites=true&w=majority`
+4. **Connect → Drivers** → copy the URI. Password is already filled in below; add the database name **`/cloudcart_auth`** before the `?` (Atlas gives you the URI without a database; without this, Mongoose writes to `test`):
+   `mongodb+srv://cloudcart:Lhein7udXmGNEhV4@cloudcart.4dxau2t.mongodb.net/cloudcart_auth?retryWrites=true&w=majority`
    (`?compressors=zlib` from the Atlas page is optional; keep it or drop it.)
 
 ✅ Done 2026-10-22: cluster `cloudcart`, user `cloudcart`, host `cloudcart.4dxau2t.mongodb.net`.
@@ -329,7 +329,7 @@ PORT=5001
 NODE_ENV=production
 JWT_SECRET=<random-40-chars — SAME in all five files>
 INTERNAL_SERVICE_TOKEN=<random-40-chars — SAME in all five files>
-MONGODB_URI=mongodb+srv://cloudcart:<password>@cloudcart.4dxau2t.mongodb.net/cloudcart_auth?retryWrites=true&w=majority
+MONGODB_URI=mongodb+srv://cloudcart:Lhein7udXmGNEhV4@cloudcart.4dxau2t.mongodb.net/cloudcart_auth?retryWrites=true&w=majority
 REDIS_HOST=redis
 REDIS_PORT=6379
 DEV_SHOW_OTP=true
@@ -557,7 +557,7 @@ Two ways in — practise both:
 2. **SSH with the key**: `ssh -i cloudcart-key.pem ec2-user@<bastion-public-ip>` (your IP must match `cloudcart-bastion-sg`).
 
 ### ✅ Verify
-From the bastion: `nc -zv <rds-endpoint> 5432` → *succeeded* (proves data-sg ← bastion-sg). `mongosh "mongodb+srv://cloudcart:<pw>@cloudcart.4dxau2t.mongodb.net/cloudcart_auth"` → `show collections`.
+From the bastion: `nc -zv <rds-endpoint> 5432` → *succeeded* (proves data-sg ← bastion-sg). `mongosh "mongodb+srv://cloudcart:Lhein7udXmGNEhV4@cloudcart.4dxau2t.mongodb.net/cloudcart_auth"` → `show collections`.
 
 📒 Ledger: EC2 `cloudcart-bastion` t3.micro ≈ ₹20/day (stop when idle; it keeps its public IP only if you attach an Elastic IP — otherwise the IP changes on every start, which is fine).
 
