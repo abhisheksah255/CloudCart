@@ -519,6 +519,18 @@ Click `cloudcart-postgres` → **Connectivity & security**: copy the **Endpoint*
 
 📒 Ledger: ECS cluster, **ASG `…cloudcart-cluster…` (this is what keeps the EC2 running — ≈ ₹45/day)**, launch template, EC2 instance, 30 GiB EBS.
 
+> 💡 **What the console just created for you — the launch template.** EC2 → Launch Templates now shows `ECSLaunchTemplate_<random>` (same as the one in the TSRS account). You never skip this; an Auto Scaling group can only launch instances from a template, and the template is what makes a plain EC2 an *ECS container instance*:
+>
+> | In the template | Why the host needs it | If it were wrong |
+> |---|---|---|
+> | **ECS-optimized AMI** (`ami-…`, Amazon Linux 2023) | ECS agent + Docker pre-installed | host boots but never joins the cluster; tasks stay `PENDING` |
+> | **User data** `ECS_CLUSTER=cloudcart-cluster` → `/etc/ecs/ecs.config` | tells the agent which cluster to register in | host registers in the `default` cluster |
+> | **IAM instance profile** `cloudcart-ecs-instance-role` | RegisterContainerInstance, ECR pull, CloudWatch, SSM | `AccessDenied`, no Session Manager |
+> | **Security group** `cloudcart-app-sg` | ALB → host on the dynamic ports | targets unhealthy |
+> | Instance type, key pair, 30 GiB root volume | sizing & fallback access | — |
+>
+> **Patching rule:** never edit a running host. To move to a newer ECS AMI, create **version 2** of this template (Actions → Modify template → new AMI), set it as default, then ASG → **Instance refresh**. The ASG replaces the host; ECS reschedules the tasks. Creating the template by hand (EC2 → Launch Templates → Create) is the Stage 2 exercise — same fields, your own name `cloudcart-ecs-lt`.
+
 ---
 
 ## Step 7b — Bastion host (10 min)
